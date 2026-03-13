@@ -1,10 +1,12 @@
 // Models
 export { type BookConfig, type Platform, type Genre, type BookStatus, BookConfigSchema, PlatformSchema, GenreSchema, BookStatusSchema } from "./models/book.js";
 export { type ChapterMeta, type ChapterStatus, ChapterMetaSchema, ChapterStatusSchema } from "./models/chapter.js";
-export { type ProjectConfig, type LLMConfig, type NotifyChannel, ProjectConfigSchema, LLMConfigSchema } from "./models/project.js";
+export { type ProjectConfig, type LLMConfig, type NotifyChannel, type DetectionConfig, type QualityGates, ProjectConfigSchema, LLMConfigSchema, DetectionConfigSchema, QualityGatesSchema } from "./models/project.js";
 export { type CurrentState, type ParticleLedger, type PendingHooks, type PendingHook, type LedgerEntry } from "./models/state.js";
 export { type GenreProfile, type ParsedGenreProfile, GenreProfileSchema, parseGenreProfile } from "./models/genre-profile.js";
 export { type BookRules, type ParsedBookRules, BookRulesSchema, parseBookRules } from "./models/book-rules.js";
+export { type DetectionHistoryEntry, type DetectionStats } from "./models/detection.js";
+export { type StyleProfile } from "./models/style-profile.js";
 
 // LLM
 export { createLLMClient, chatCompletion, chatWithTools, type LLMClient, type LLMResponse, type LLMMessage, type ToolDefinition, type ToolCall, type AgentMessage, type ChatWithToolsResult } from "./llm/provider.js";
@@ -19,17 +21,23 @@ export { RadarAgent, type RadarResult, type RadarRecommendation } from "./agents
 export { FanqieRadarSource, QidianRadarSource, TextRadarSource, type RadarSource, type PlatformRankings, type RankingEntry } from "./agents/radar-source.js";
 export { readGenreProfile, readBookRules, listAvailableGenres, getBuiltinGenresDir } from "./agents/rules-reader.js";
 export { buildWriterSystemPrompt } from "./agents/writer-prompts.js";
+export { analyzeAITells, type AITellResult, type AITellIssue } from "./agents/ai-tells.js";
+export { detectAIContent, type DetectionResult } from "./agents/detector.js";
+export { analyzeStyle } from "./agents/style-analyzer.js";
+export { analyzeDetectionInsights } from "./agents/detection-insights.js";
 
 // Pipeline
 export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type ReviseResult, type TruthFiles, type BookStatusInfo } from "./pipeline/runner.js";
 export { Scheduler, type SchedulerConfig } from "./pipeline/scheduler.js";
 export { runAgentLoop, AGENT_TOOLS as AGENT_TOOLS, type AgentLoopOptions } from "./pipeline/agent.js";
+export { detectChapter, detectAndRewrite, loadDetectionHistory, type DetectChapterResult, type DetectAndRewriteResult } from "./pipeline/detection-runner.js";
 
 // State
 export { StateManager } from "./state/manager.js";
 
 // Notify
-export { dispatchNotification, type NotifyMessage } from "./notify/dispatcher.js";
+export { dispatchNotification, dispatchWebhookEvent, type NotifyMessage } from "./notify/dispatcher.js";
 export { sendTelegram, type TelegramConfig } from "./notify/telegram.js";
 export { sendFeishu, type FeishuConfig } from "./notify/feishu.js";
 export { sendWechatWork, type WechatWorkConfig } from "./notify/wechat-work.js";
+export { sendWebhook, type WebhookConfig, type WebhookEvent, type WebhookPayload } from "./notify/webhook.js";

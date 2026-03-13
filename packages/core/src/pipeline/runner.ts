@@ -10,8 +10,10 @@ import { ReviserAgent, type ReviseMode } from "../agents/reviser.js";
 import { RadarAgent } from "../agents/radar.js";
 import type { RadarSource } from "../agents/radar-source.js";
 import { readGenreProfile } from "../agents/rules-reader.js";
+import { analyzeAITells } from "../agents/ai-tells.js";
 import { StateManager } from "../state/manager.js";
-import { dispatchNotification } from "../notify/dispatcher.js";
+import { dispatchNotification, dispatchWebhookEvent } from "../notify/dispatcher.js";
+import type { WebhookEvent } from "../notify/webhook.js";
 import type { AgentContext } from "../agents/base.js";
 import type { AuditResult, AuditIssue } from "../agents/continuity.js";
 import type { RadarResult } from "../agents/radar.js";
@@ -144,6 +146,7 @@ export class PipelineRunner {
 
       // Save truth files
       await writer.saveChapter(bookDir, output, gp.numericalSystem);
+      await writer.saveNewTruthFiles(bookDir, output);
 
       // Update index
       const existingIndex = await this.state.loadChapterIndex(bookId);
@@ -162,6 +165,11 @@ export class PipelineRunner {
       // Snapshot
       await this.state.snapshotState(bookId, chapterNumber);
 
+      await this.emitWebhook("chapter-complete", bookId, chapterNumber, {
+        title: output.title,
+        wordCount: output.wordCount,
+      });
+
       return { chapterNumber, title: output.title, wordCount: output.wordCount, filePath };
     } finally {
       await releaseLock();
@@ -179,7 +187,19 @@ export class PipelineRunner {
 
     const content = await this.readChapterContent(bookDir, targetChapter);
     const auditor = new ContinuityAuditor(this.agentCtx(bookId));
-    const result = await auditor.auditChapter(bookDir, content, targetChapter, book.genre);
+    const llmResult = await auditor.auditChapter(bookDir, content, targetChapter, book.genre);
+
+    // Merge rule-based AI-tell detection
+    const aiTells = analyzeAITells(content);
+    const mergedIssues: ReadonlyArray<AuditIssue> = [
+      ...llmResult.issues,
+      ...aiTells.issues,
+    ];
+    const result: AuditResult = {
+      passed: llmResult.passed,
+      issues: mergedIssues,
+      summary: llmResult.summary,
+    };
 
     // Update index with audit result
     const index = await this.state.loadChapterIndex(bookId);
@@ -194,6 +214,13 @@ export class PipelineRunner {
         : ch,
     );
     await this.state.saveChapterIndex(bookId, updated);
+
+    await this.emitWebhook(
+      result.passed ? "audit-passed" : "audit-failed",
+      bookId,
+      targetChapter,
+      { summary: result.summary, issueCount: result.issues.length },
+    );
 
     return { ...result, chapterNumber: targetChapter };
   }
@@ -276,6 +303,11 @@ export class PipelineRunner {
 
       // Re-snapshot
       await this.state.snapshotState(bookId, targetChapter);
+
+      await this.emitWebhook("revision-complete", bookId, targetChapter, {
+        wordCount: reviseOutput.wordCount,
+        fixedCount: reviseOutput.fixedIssues.length,
+      });
 
       return {
         chapterNumber: targetChapter,
@@ -362,12 +394,18 @@ export class PipelineRunner {
 
     // 2. Audit chapter
     const auditor = new ContinuityAuditor(this.agentCtx(bookId));
-    let auditResult = await auditor.auditChapter(
+    const llmAudit = await auditor.auditChapter(
       bookDir,
       output.content,
       chapterNumber,
       book.genre,
     );
+    const aiTellsResult = analyzeAITells(output.content);
+    let auditResult: AuditResult = {
+      passed: llmAudit.passed,
+      issues: [...llmAudit.issues, ...aiTellsResult.issues],
+      summary: llmAudit.summary,
+    };
 
     let finalContent = output.content;
     let finalWordCount = output.wordCount;
@@ -395,12 +433,18 @@ export class PipelineRunner {
           revised = true;
 
           // Re-audit the revised content
-          auditResult = await auditor.auditChapter(
+          const reAudit = await auditor.auditChapter(
             bookDir,
             finalContent,
             chapterNumber,
             book.genre,
           );
+          const reAITells = analyzeAITells(finalContent);
+          auditResult = {
+            passed: reAudit.passed,
+            issues: [...reAudit.issues, ...reAITells.issues],
+            summary: reAudit.summary,
+          };
 
           // Update state files from revision
           const storyDir = join(bookDir, "story");
@@ -433,6 +477,9 @@ export class PipelineRunner {
     if (!revised) {
       await writer.saveChapter(bookDir, output, gp.numericalSystem);
     }
+
+    // Save new truth files (summaries, subplots, emotional arcs, character matrix)
+    await writer.saveNewTruthFiles(bookDir, output);
 
     // 5. Update chapter index
     const existingIndex = await this.state.loadChapterIndex(bookId);
@@ -471,6 +518,13 @@ export class PipelineRunner {
       });
     }
 
+    await this.emitWebhook("pipeline-complete", bookId, chapterNumber, {
+      title: output.title,
+      wordCount: finalWordCount,
+      passed: auditResult.passed,
+      revised,
+    });
+
     return {
       chapterNumber,
       title: output.title,
@@ -484,6 +538,22 @@ export class PipelineRunner {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  private async emitWebhook(
+    event: WebhookEvent,
+    bookId: string,
+    chapterNumber?: number,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.config.notifyChannels || this.config.notifyChannels.length === 0) return;
+    await dispatchWebhookEvent(this.config.notifyChannels, {
+      event,
+      bookId,
+      chapterNumber,
+      timestamp: new Date().toISOString(),
+      data,
+    });
+  }
 
   private async readChapterContent(bookDir: string, chapterNumber: number): Promise<string> {
     const chaptersDir = join(bookDir, "chapters");

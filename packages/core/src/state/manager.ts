@@ -117,7 +117,10 @@ export class StateManager {
     const snapshotDir = join(storyDir, "snapshots", String(chapterNumber));
     await mkdir(snapshotDir, { recursive: true });
 
-    const files = ["current_state.md", "particle_ledger.md", "pending_hooks.md"];
+    const files = [
+      "current_state.md", "particle_ledger.md", "pending_hooks.md",
+      "chapter_summaries.md", "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
+    ];
     await Promise.all(
       files.map(async (f) => {
         try {
@@ -134,14 +137,33 @@ export class StateManager {
     const storyDir = join(this.bookDir(bookId), "story");
     const snapshotDir = join(storyDir, "snapshots", String(chapterNumber));
 
-    const files = ["current_state.md", "particle_ledger.md", "pending_hooks.md"];
+    const files = [
+      "current_state.md", "particle_ledger.md", "pending_hooks.md",
+      "chapter_summaries.md", "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
+    ];
     try {
+      // The first 3 files are required; the rest are optional (may not exist in older snapshots)
+      const requiredFiles = files.slice(0, 3);
+      const optionalFiles = files.slice(3);
+
       await Promise.all(
-        files.map(async (f) => {
+        requiredFiles.map(async (f) => {
           const content = await readFile(join(snapshotDir, f), "utf-8");
           await writeFile(join(storyDir, f), content, "utf-8");
         }),
       );
+
+      await Promise.all(
+        optionalFiles.map(async (f) => {
+          try {
+            const content = await readFile(join(snapshotDir, f), "utf-8");
+            await writeFile(join(storyDir, f), content, "utf-8");
+          } catch {
+            // Optional file missing in older snapshots — skip
+          }
+        }),
+      );
+
       return true;
     } catch {
       return false;

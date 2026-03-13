@@ -17,6 +17,8 @@ import { reviseCommand } from "./commands/revise.js";
 import { agentCommand } from "./commands/agent.js";
 import { genreCommand } from "./commands/genre.js";
 import { updateCommand } from "./commands/update.js";
+import { detectCommand } from "./commands/detect.js";
+import { styleCommand } from "./commands/style.js";
 
 const program = new Command();
 
@@ -42,5 +44,7 @@ program.addCommand(reviseCommand);
 program.addCommand(agentCommand);
 program.addCommand(genreCommand);
 program.addCommand(updateCommand);
+program.addCommand(detectCommand);
+program.addCommand(styleCommand);
 
 program.parse();

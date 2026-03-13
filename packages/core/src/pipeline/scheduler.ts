@@ -2,14 +2,18 @@ import { PipelineRunner } from "./runner.js";
 import type { PipelineConfig } from "./runner.js";
 import { StateManager } from "../state/manager.js";
 import type { BookConfig } from "../models/book.js";
+import type { QualityGates } from "../models/project.js";
+import { dispatchWebhookEvent } from "../notify/dispatcher.js";
 
 export interface SchedulerConfig extends PipelineConfig {
   readonly radarCron: string;
   readonly writeCron: string;
   readonly auditCron: string;
   readonly maxConcurrentBooks: number;
+  readonly qualityGates?: QualityGates;
   readonly onChapterComplete?: (bookId: string, chapter: number, status: string) => void;
   readonly onError?: (bookId: string, error: Error) => void;
+  readonly onPause?: (bookId: string, reason: string) => void;
 }
 
 interface ScheduledTask {
@@ -24,6 +28,10 @@ export class Scheduler {
   private readonly config: SchedulerConfig;
   private tasks: ScheduledTask[] = [];
   private running = false;
+
+  // Quality gate tracking (per book)
+  private consecutiveFailures = new Map<string, number>();
+  private pausedBooks = new Set<string>();
 
   constructor(config: SchedulerConfig) {
     this.config = config;
@@ -77,11 +85,31 @@ export class Scheduler {
     return this.running;
   }
 
+  /** Resume a paused book. */
+  resumeBook(bookId: string): void {
+    this.pausedBooks.delete(bookId);
+    this.consecutiveFailures.delete(bookId);
+  }
+
+  /** Check if a book is paused. */
+  isBookPaused(bookId: string): boolean {
+    return this.pausedBooks.has(bookId);
+  }
+
+  private get gates(): QualityGates {
+    return this.config.qualityGates ?? {
+      maxAuditRetries: 2,
+      pauseAfterConsecutiveFailures: 3,
+      retryTemperatureStep: 0.1,
+    };
+  }
+
   private async runWriteCycle(): Promise<void> {
     const bookIds = await this.state.listBooks();
 
     const activeBooks: Array<{ id: string; config: BookConfig }> = [];
     for (const id of bookIds) {
+      if (this.pausedBooks.has(id)) continue; // Skip paused books
       const config = await this.state.loadBookConfig(id);
       if (config.status === "active" || config.status === "outlining") {
         activeBooks.push({ id, config });
@@ -93,6 +121,15 @@ export class Scheduler {
     for (const book of booksToWrite) {
       try {
         const result = await this.pipeline.writeNextChapter(book.id);
+
+        if (result.status === "approved") {
+          // Reset failure counter on success
+          this.consecutiveFailures.delete(book.id);
+        } else {
+          // Audit failed — apply quality gates
+          await this.handleAuditFailure(book.id, result.chapterNumber);
+        }
+
         this.config.onChapterComplete?.(
           book.id,
           result.chapterNumber,
@@ -100,6 +137,43 @@ export class Scheduler {
         );
       } catch (e) {
         this.config.onError?.(book.id, e as Error);
+        await this.handleAuditFailure(book.id, 0);
+      }
+    }
+  }
+
+  private async handleAuditFailure(bookId: string, chapterNumber: number): Promise<void> {
+    const failures = (this.consecutiveFailures.get(bookId) ?? 0) + 1;
+    this.consecutiveFailures.set(bookId, failures);
+
+    const gates = this.gates;
+
+    // Check if we should retry with higher temperature
+    if (failures <= gates.maxAuditRetries) {
+      process.stderr.write(
+        `[scheduler] ${bookId} audit failed (${failures}/${gates.maxAuditRetries}), retrying with higher temperature\n`,
+      );
+      // The retry will happen in the next write cycle with adjusted temperature
+      // (We don't retry immediately to avoid tight loops)
+      return;
+    }
+
+    // Check if we should pause
+    if (failures >= gates.pauseAfterConsecutiveFailures) {
+      this.pausedBooks.add(bookId);
+      const reason = `${failures} consecutive audit failures (threshold: ${gates.pauseAfterConsecutiveFailures})`;
+      process.stderr.write(`[scheduler] ${bookId} PAUSED: ${reason}\n`);
+      this.config.onPause?.(bookId, reason);
+
+      // Emit webhook event
+      if (this.config.notifyChannels && this.config.notifyChannels.length > 0) {
+        await dispatchWebhookEvent(this.config.notifyChannels, {
+          event: "pipeline-error",
+          bookId,
+          chapterNumber: chapterNumber > 0 ? chapterNumber : undefined,
+          timestamp: new Date().toISOString(),
+          data: { reason, consecutiveFailures: failures },
+        });
       }
     }
   }

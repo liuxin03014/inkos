@@ -39,6 +39,13 @@ const DIMENSION_MAP: Record<number, string> = {
   17: "流水账",
   18: "知识库污染",
   19: "视角一致性",
+  20: "段落等长",
+  21: "套话密度",
+  22: "公式化转折",
+  23: "列表式结构",
+  24: "支线停滞",
+  25: "弧线平坦",
+  26: "节奏单调",
 };
 
 function buildDimensionList(
@@ -83,6 +90,15 @@ function buildDimensionList(
     if (id === 19) {
       note = "检查视角切换是否有过渡、是否与设定视角一致";
     }
+    if (id === 24) {
+      note = "检查支线剧情是否停滞超过5章未推进";
+    }
+    if (id === 25) {
+      note = "检查主要角色情感弧线是否平坦（连续3章无情绪变化）";
+    }
+    if (id === 26) {
+      note = "检查章节类型节奏：连续≥3同类型章→warning，≥5章无高潮/回收→warning";
+    }
 
     dims.push({ id, name, note });
   }
@@ -101,12 +117,17 @@ export class ContinuityAuditor extends BaseAgent {
     chapterNumber: number,
     genre?: string,
   ): Promise<AuditResult> {
-    const [currentState, ledger, hooks, styleGuideRaw] = await Promise.all([
-      this.readFileSafe(join(bookDir, "story/current_state.md")),
-      this.readFileSafe(join(bookDir, "story/particle_ledger.md")),
-      this.readFileSafe(join(bookDir, "story/pending_hooks.md")),
-      this.readFileSafe(join(bookDir, "story/style_guide.md")),
-    ]);
+    const [currentState, ledger, hooks, styleGuideRaw, subplotBoard, emotionalArcs, characterMatrix, chapterSummaries] =
+      await Promise.all([
+        this.readFileSafe(join(bookDir, "story/current_state.md")),
+        this.readFileSafe(join(bookDir, "story/particle_ledger.md")),
+        this.readFileSafe(join(bookDir, "story/pending_hooks.md")),
+        this.readFileSafe(join(bookDir, "story/style_guide.md")),
+        this.readFileSafe(join(bookDir, "story/subplot_board.md")),
+        this.readFileSafe(join(bookDir, "story/emotional_arcs.md")),
+        this.readFileSafe(join(bookDir, "story/character_matrix.md")),
+        this.readFileSafe(join(bookDir, "story/chapter_summaries.md")),
+      ]);
 
     // Load genre profile and book rules
     const genreId = genre ?? "other";
@@ -153,6 +174,19 @@ ${dimList}
       ? `\n## 资源账本\n${ledger}`
       : "";
 
+    const subplotBlock = subplotBoard !== "(文件不存在)"
+      ? `\n## 支线进度板\n${subplotBoard}\n`
+      : "";
+    const emotionalBlock = emotionalArcs !== "(文件不存在)"
+      ? `\n## 情感弧线\n${emotionalArcs}\n`
+      : "";
+    const matrixBlock = characterMatrix !== "(文件不存在)"
+      ? `\n## 角色交互矩阵\n${characterMatrix}\n`
+      : "";
+    const summariesBlock = chapterSummaries !== "(文件不存在)"
+      ? `\n## 章节摘要（用于节奏检查）\n${chapterSummaries}\n`
+      : "";
+
     const userPrompt = `请审查第${chapterNumber}章。
 
 ## 当前状态卡
@@ -160,7 +194,7 @@ ${currentState}
 ${ledgerBlock}
 ## 伏笔池
 ${hooks}
-
+${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}
 ## 文风指南
 ${styleGuide}
 

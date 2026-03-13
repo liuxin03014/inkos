@@ -6,7 +6,7 @@ import { readGenreProfile, readBookRules } from "./rules-reader.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-export type ReviseMode = "polish" | "rewrite" | "rework";
+export type ReviseMode = "polish" | "rewrite" | "rework" | "anti-detect";
 
 export interface ReviseOutput {
   readonly revisedContent: string;
@@ -21,6 +21,7 @@ const MODE_DESCRIPTIONS: Record<ReviseMode, string> = {
   polish: "润色：只改表达、节奏、段落呼吸，不改事实与剧情结论",
   rewrite: "改写：可改叙述顺序、画面、力度，但保留核心事实与人物动机",
   rework: "重写：可重构场景推进和冲突组织，但不改主设定和大事件结果",
+  "anti-detect": "反检测改写：在保持剧情不变的前提下，降低AI生成可检测性。手法包括：增加段落长度差异、打破句式规律、用口语化/个性化表达替代书面套话、加入非对称修辞、随机化过渡方式",
 };
 
 export class ReviserAgent extends BaseAgent {

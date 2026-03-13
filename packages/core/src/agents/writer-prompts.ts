@@ -13,6 +13,7 @@ export function buildWriterSystemPrompt(
   bookRulesBody: string,
   genreBody: string,
   styleGuide: string,
+  styleFingerprint?: string,
 ): string {
   const sections = [
     buildGenreIntro(book, genreProfile),
@@ -26,6 +27,7 @@ export function buildWriterSystemPrompt(
     buildProtagonistRules(bookRules),
     buildBookRulesBody(bookRulesBody),
     buildStyleGuide(styleGuide),
+    buildStyleFingerprint(styleFingerprint),
     buildPreWriteChecklist(book, genreProfile),
     buildOutputFormat(book, genreProfile),
   ];
@@ -258,6 +260,19 @@ function buildStyleGuide(styleGuide: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Style fingerprint (Phase 9: C3)
+// ---------------------------------------------------------------------------
+
+function buildStyleFingerprint(fingerprint?: string): string {
+  if (!fingerprint) return "";
+  return `## 文风指纹（模仿目标）
+
+以下是从参考文本中提取的写作风格特征。你的输出必须尽量贴合这些特征：
+
+${fingerprint}`;
+}
+
+// ---------------------------------------------------------------------------
 // Pre-write checklist
 // ---------------------------------------------------------------------------
 
@@ -334,5 +349,32 @@ ${postSettlement}
 (更新后的完整状态卡，Markdown表格格式)
 ${updatedLedger}
 === UPDATED_HOOKS ===
-(更新后的完整伏笔池，Markdown表格格式)`;
+(更新后的完整伏笔池，Markdown表格格式)
+
+=== CHAPTER_SUMMARY ===
+(本章摘要，Markdown表格格式，必须包含以下列)
+| 章节 | 标题 | 出场人物 | 关键事件 | 状态变化 | 伏笔动态 | 情绪基调 | 章节类型 |
+|------|------|----------|----------|----------|----------|----------|----------|
+| N | 本章标题 | 角色1,角色2 | 一句话概括 | 关键变化 | H01埋设/H02推进 | 情绪走向 | ${gp.chapterTypes.length > 0 ? gp.chapterTypes.join("/") : "过渡/冲突/高潮/收束"} |
+
+=== UPDATED_SUBPLOTS ===
+(更新后的完整支线进度板，Markdown表格格式)
+| 支线ID | 支线名 | 相关角色 | 起始章 | 最近活跃章 | 状态 | 进度概述 |
+|--------|--------|----------|--------|------------|------|----------|
+
+=== UPDATED_EMOTIONAL_ARCS ===
+(更新后的完整情感弧线，Markdown表格格式)
+| 角色 | 章节 | 情绪状态 | 触发事件 | 强度(1-10) | 弧线方向 |
+|------|------|----------|----------|------------|----------|
+
+=== UPDATED_CHARACTER_MATRIX ===
+(更新后的角色交互矩阵，分两个子表)
+
+### 相遇记录
+| 角色A | 角色B | 首次相遇章 | 最近交互章 | 关系性质 | 关系变化 |
+|-------|-------|------------|------------|----------|----------|
+
+### 信息边界
+| 角色 | 已知信息 | 未知信息 | 信息来源章 |
+|------|----------|----------|------------|`;
 }

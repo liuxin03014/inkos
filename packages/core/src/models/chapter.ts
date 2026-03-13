@@ -24,6 +24,9 @@ export const ChapterMetaSchema = z.object({
   updatedAt: z.string().datetime(),
   auditIssues: z.array(z.string()).default([]),
   reviewNote: z.string().optional(),
+  detectionScore: z.number().min(0).max(1).optional(),
+  detectionProvider: z.string().optional(),
+  detectedAt: z.string().datetime().optional(),
 });
 
 export type ChapterMeta = z.infer<typeof ChapterMetaSchema>;
