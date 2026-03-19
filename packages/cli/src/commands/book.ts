@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, rm } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
 import { PipelineRunner, StateManager, type BookConfig } from "@actalk/inkos-core";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
@@ -200,6 +201,58 @@ bookCommand
         log(JSON.stringify({ error: String(e) }));
       } else {
         logError(`Failed to list books: ${e}`);
+      }
+      process.exit(1);
+    }
+  });
+
+bookCommand
+  .command("delete")
+  .description("Delete a book and all its chapters, truth files, and snapshots")
+  .argument("<book-id>", "Book ID to delete")
+  .option("--force", "Skip confirmation prompt")
+  .option("--json", "Output JSON")
+  .action(async (bookId: string, opts) => {
+    try {
+      const root = findProjectRoot();
+      const state = new StateManager(root);
+
+      const allBooks = await state.listBooks();
+      if (!allBooks.includes(bookId)) {
+        throw new Error(`Book "${bookId}" not found. Available: ${allBooks.join(", ") || "(none)"}`);
+      }
+
+      const book = await state.loadBookConfig(bookId);
+      const index = await state.loadChapterIndex(bookId);
+
+      if (!opts.force) {
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await new Promise<string>((resolve) => {
+          rl.question(
+            `Delete "${book.title}" (${bookId})? This will remove ${index.length} chapter(s) and all data. (y/N) `,
+            resolve,
+          );
+        });
+        rl.close();
+        if (answer.toLowerCase() !== "y") {
+          log("Cancelled.");
+          return;
+        }
+      }
+
+      const bookDir = join(root, "books", bookId);
+      await rm(bookDir, { recursive: true, force: true });
+
+      if (opts.json) {
+        log(JSON.stringify({ deleted: bookId, chapters: index.length }));
+      } else {
+        log(`Deleted "${book.title}" (${bookId}): ${index.length} chapter(s) removed.`);
+      }
+    } catch (e) {
+      if (opts.json) {
+        log(JSON.stringify({ error: String(e) }));
+      } else {
+        logError(`Failed to delete book: ${e}`);
       }
       process.exit(1);
     }
