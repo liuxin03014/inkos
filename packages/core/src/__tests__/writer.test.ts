@@ -3,7 +3,6 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WriterAgent } from "../agents/writer.js";
-import { ReviserAgent } from "../agents/reviser.js";
 import { buildLengthSpec } from "../utils/length-metrics.js";
 import type { AuditIssue } from "../agents/continuity.js";
 
@@ -245,6 +244,30 @@ describe("WriterAgent", () => {
 
   it("routes chapter repair through the writer-side repair interface", async () => {
     const root = await mkdtemp(join(tmpdir(), "inkos-writer-repair-test-"));
+    const bookDir = join(root, "book");
+    const storyDir = join(bookDir, "story");
+    await mkdir(storyDir, { recursive: true });
+    await Promise.all([
+      writeFile(join(bookDir, "book.json"), JSON.stringify({
+        id: "repair-book",
+        title: "Repair Book",
+        genre: "xuanhuan",
+        platform: "qidian",
+        chapterWordCount: 2200,
+        targetChapters: 100,
+        status: "active",
+        createdAt: "2026-04-03T00:00:00.000Z",
+        updatedAt: "2026-04-03T00:00:00.000Z",
+      }, null, 2), "utf-8"),
+      writeFile(join(storyDir, "current_state.md"), "# Current State\n\nstate", "utf-8"),
+      writeFile(join(storyDir, "particle_ledger.md"), "# Ledger\n\nledger", "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "# Hooks\n\nhooks", "utf-8"),
+      writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\nKeep it sharp.", "utf-8"),
+      writeFile(join(storyDir, "volume_outline.md"), "# Volume Outline\n\nChapter 7 lands the handoff.", "utf-8"),
+      writeFile(join(storyDir, "story_bible.md"), "# Story Bible\n\nThe seal matters.", "utf-8"),
+      writeFile(join(storyDir, "character_matrix.md"), "# Character Matrix\n\nmatrix", "utf-8"),
+      writeFile(join(storyDir, "chapter_summaries.md"), "# Chapter Summaries\n\nsummary", "utf-8"),
+    ]);
     const agent = new WriterAgent({
       client: {
         provider: "openai",
@@ -266,21 +289,42 @@ describe("WriterAgent", () => {
       description: "repair the broken scene transition",
       suggestion: "rewrite the handoff",
     }];
-    const reviseChapter = vi.spyOn(ReviserAgent.prototype, "reviseChapter")
-      .mockResolvedValue({
-        revisedContent: "fixed chapter",
-        wordCount: 12,
-        fixedIssues: ["fixed transition"],
-        updatedState: "state",
-        updatedLedger: "ledger",
-        updatedHooks: "hooks",
-        tokenUsage: ZERO_USAGE,
-      });
+    const writerChat = vi.spyOn(WriterAgent.prototype as never, "chat" as never).mockResolvedValue({
+      content: [
+        "=== FIXED_ISSUES ===",
+        "- fixed transition",
+        "",
+        "=== PATCHES ===",
+        "--- PATCH 1 ---",
+        "TARGET_TEXT:",
+        "broken handoff",
+        "REPLACEMENT_TEXT:",
+        "fixed handoff",
+        "--- END PATCH ---",
+        "",
+        "=== UPDATED_STATE ===",
+        "state",
+        "",
+        "=== UPDATED_LEDGER ===",
+        "ledger",
+        "",
+        "=== UPDATED_HOOKS ===",
+        "hooks",
+      ].join("\n"),
+      usage: ZERO_USAGE,
+    });
 
     try {
       const result = await agent.repairChapter({
-        bookDir: "/tmp/book",
-        chapterContent: "broken chapter",
+        bookDir,
+        chapterContent: [
+          "Rain climbed down the window in slow lines.",
+          "The courier kept his shoulders square.",
+          "broken handoff",
+          "No one else in the room said a word.",
+          "The lamp hummed above the map table.",
+          "Only then did the captain look up.",
+        ].join("\n"),
         chapterNumber: 7,
         issues,
         mode: "local-fix",
@@ -288,18 +332,8 @@ describe("WriterAgent", () => {
         lengthSpec: buildLengthSpec(2200, "zh"),
       });
 
-      expect(reviseChapter).toHaveBeenCalledWith(
-        "/tmp/book",
-        "broken chapter",
-        7,
-        issues,
-        "local-fix",
-        "xuanhuan",
-        expect.objectContaining({
-          lengthSpec: expect.objectContaining({ target: 2200 }),
-        }),
-      );
-      expect(result.revisedContent).toBe("fixed chapter");
+      expect(writerChat).toHaveBeenCalledOnce();
+      expect(result.revisedContent).toContain("fixed handoff");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

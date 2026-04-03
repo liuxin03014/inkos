@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ReviserAgent } from "../agents/reviser.js";
+import { WriterAgent } from "../agents/writer.js";
 import { buildLengthSpec } from "../utils/length-metrics.js";
 import type { AuditIssue } from "../agents/continuity.js";
 
@@ -19,13 +19,13 @@ const CRITICAL_ISSUE: AuditIssue = {
   suggestion: "Repair the contradiction",
 };
 
-describe("ReviserAgent", () => {
+describe("WriterAgent repairChapter", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("prefers book language override when building revision prompts", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-lang-test-"));
+    const root = await mkdtemp(join(tmpdir(), "inkos-writer-repair-lang-test-"));
     const bookDir = join(root, "book");
     await mkdir(join(bookDir, "story"), { recursive: true });
 
@@ -46,7 +46,7 @@ describe("ReviserAgent", () => {
       "utf-8",
     );
 
-    const agent = new ReviserAgent({
+    const agent = new WriterAgent({
       client: {
         provider: "openai",
         apiFormat: "chat",
@@ -62,7 +62,7 @@ describe("ReviserAgent", () => {
       projectRoot: root,
     });
 
-    const chatSpy = vi.spyOn(ReviserAgent.prototype as never, "chat" as never).mockResolvedValue({
+    const chatSpy = vi.spyOn(WriterAgent.prototype as never, "chat" as never).mockResolvedValue({
       content: [
         "=== FIXED_ISSUES ===",
         "- repaired",
@@ -80,7 +80,14 @@ describe("ReviserAgent", () => {
     });
 
     try {
-      await agent.reviseChapter(bookDir, "Original chapter content.", 1, [CRITICAL_ISSUE], "rewrite", "xuanhuan");
+      await agent.repairChapter({
+        bookDir,
+        chapterContent: "Original chapter content.",
+        chapterNumber: 1,
+        issues: [CRITICAL_ISSUE],
+        mode: "rewrite",
+        genre: "xuanhuan",
+      });
 
       const messages = chatSpy.mock.calls[0]?.[0] as
         | ReadonlyArray<{ content: string }>
@@ -95,11 +102,11 @@ describe("ReviserAgent", () => {
   });
 
   it("keeps rewrite mode local-first instead of encouraging full-chapter replacement", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-rewrite-guardrail-test-"));
+    const root = await mkdtemp(join(tmpdir(), "inkos-writer-repair-rewrite-guardrail-test-"));
     const bookDir = join(root, "book");
     await mkdir(join(bookDir, "story"), { recursive: true });
 
-    const agent = new ReviserAgent({
+    const agent = new WriterAgent({
       client: {
         provider: "openai",
         apiFormat: "chat",
@@ -115,7 +122,7 @@ describe("ReviserAgent", () => {
       projectRoot: root,
     });
 
-    const chatSpy = vi.spyOn(ReviserAgent.prototype as never, "chat" as never).mockResolvedValue({
+    const chatSpy = vi.spyOn(WriterAgent.prototype as never, "chat" as never).mockResolvedValue({
       content: [
         "=== FIXED_ISSUES ===",
         "- repaired",
@@ -138,7 +145,14 @@ describe("ReviserAgent", () => {
     });
 
     try {
-      await agent.reviseChapter(bookDir, "原始正文。", 1, [CRITICAL_ISSUE], "rewrite", "xuanhuan");
+      await agent.repairChapter({
+        bookDir,
+        chapterContent: "原始正文。",
+        chapterNumber: 1,
+        issues: [CRITICAL_ISSUE],
+        mode: "rewrite",
+        genre: "xuanhuan",
+      });
 
       const messages = chatSpy.mock.calls[0]?.[0] as
         | ReadonlyArray<{ content: string }>
@@ -153,11 +167,11 @@ describe("ReviserAgent", () => {
   });
 
   it("tells the model to preserve the target range when a length spec is provided", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-test-"));
+    const root = await mkdtemp(join(tmpdir(), "inkos-writer-repair-test-"));
     const bookDir = join(root, "book");
     await mkdir(join(bookDir, "story"), { recursive: true });
 
-    const agent = new ReviserAgent({
+    const agent = new WriterAgent({
       client: {
         provider: "openai",
         apiFormat: "chat",
@@ -173,7 +187,7 @@ describe("ReviserAgent", () => {
       projectRoot: root,
     });
 
-    const chatSpy = vi.spyOn(ReviserAgent.prototype as never, "chat" as never).mockResolvedValue({
+    const chatSpy = vi.spyOn(WriterAgent.prototype as never, "chat" as never).mockResolvedValue({
       content: [
         "=== FIXED_ISSUES ===",
         "- repaired",
@@ -196,17 +210,15 @@ describe("ReviserAgent", () => {
     });
 
     try {
-      await agent.reviseChapter(
+      await agent.repairChapter({
         bookDir,
-        "原始正文。",
-        1,
-        [CRITICAL_ISSUE],
-        "local-fix",
-        "xuanhuan",
-        {
+        chapterContent: "原始正文。",
+        chapterNumber: 1,
+        issues: [CRITICAL_ISSUE],
+        mode: "local-fix",
+        genre: "xuanhuan",
           lengthSpec: buildLengthSpec(220, "zh"),
-        },
-      );
+      });
 
       const messages = chatSpy.mock.calls[0]?.[0] as
         | ReadonlyArray<{ content: string }>
@@ -225,11 +237,11 @@ describe("ReviserAgent", () => {
   });
 
   it("reconstructs revised content from local-fix patches and preserves untouched text", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-spotfix-patch-test-"));
+    const root = await mkdtemp(join(tmpdir(), "inkos-writer-repair-local-fix-patch-test-"));
     const bookDir = join(root, "book");
     await mkdir(join(bookDir, "story"), { recursive: true });
 
-    const agent = new ReviserAgent({
+    const agent = new WriterAgent({
       client: {
         provider: "openai",
         apiFormat: "chat",
@@ -245,7 +257,7 @@ describe("ReviserAgent", () => {
       projectRoot: root,
     });
 
-    vi.spyOn(ReviserAgent.prototype as never, "chat" as never).mockResolvedValue({
+    vi.spyOn(WriterAgent.prototype as never, "chat" as never).mockResolvedValue({
       content: [
         "=== FIXED_ISSUES ===",
         "- 收紧了开头动作句。",
@@ -277,14 +289,14 @@ describe("ReviserAgent", () => {
     ].join("\n");
 
     try {
-      const result = await agent.reviseChapter(
+      const result = await agent.repairChapter({
         bookDir,
-        original,
-        1,
-        [CRITICAL_ISSUE],
-        "local-fix",
-        "xuanhuan",
-      );
+        chapterContent: original,
+        chapterNumber: 1,
+        issues: [CRITICAL_ISSUE],
+        mode: "local-fix",
+        genre: "xuanhuan",
+      });
 
       expect(result.revisedContent).toBe([
         "门轴轻轻响了一下。",
@@ -301,7 +313,7 @@ describe("ReviserAgent", () => {
   });
 
   it("uses selected summary and hook evidence instead of full long-history markdown in governed mode", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-governed-test-"));
+    const root = await mkdtemp(join(tmpdir(), "inkos-writer-repair-governed-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });
@@ -361,7 +373,7 @@ describe("ReviserAgent", () => {
       writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\n- Keep the prose restrained.\n", "utf-8"),
     ]);
 
-    const agent = new ReviserAgent({
+    const agent = new WriterAgent({
       client: {
         provider: "openai",
         apiFormat: "chat",
@@ -377,7 +389,7 @@ describe("ReviserAgent", () => {
       projectRoot: root,
     });
 
-    const chatSpy = vi.spyOn(ReviserAgent.prototype as never, "chat" as never).mockResolvedValue({
+    const chatSpy = vi.spyOn(WriterAgent.prototype as never, "chat" as never).mockResolvedValue({
       content: [
         "=== FIXED_ISSUES ===",
         "- repaired",
@@ -400,14 +412,13 @@ describe("ReviserAgent", () => {
     });
 
     try {
-      await agent.reviseChapter(
+      await agent.repairChapter({
         bookDir,
-        "原始正文。",
-        100,
-        [CRITICAL_ISSUE],
-        "local-fix",
-        "xuanhuan",
-        {
+        chapterContent: "原始正文。",
+        chapterNumber: 100,
+        issues: [CRITICAL_ISSUE],
+        mode: "local-fix",
+        genre: "xuanhuan",
           chapterIntent: "# Chapter Intent\n\n## Goal\nBring the focus back to the mentor oath conflict.\n",
           contextPackage: {
             chapter: 100,
@@ -445,8 +456,7 @@ describe("ReviserAgent", () => {
             activeOverrides: [],
           },
           lengthSpec: buildLengthSpec(220, "zh"),
-        },
-      );
+      });
 
       const messages = chatSpy.mock.calls[0]?.[0] as
         | ReadonlyArray<{ content: string }>

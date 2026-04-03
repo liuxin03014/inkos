@@ -3,12 +3,16 @@ import type { BookConfig } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import type { BookRules } from "../models/book-rules.js";
 import { buildWriterSystemPrompt, type FanficContext } from "./writer-prompts.js";
-import { ReviserAgent, type ReviseMode, type ReviseOutput } from "./reviser.js";
+import {
+  repairChapterWithWriter,
+  type WriterRepairInput,
+  type ReviseMode,
+  type ReviseOutput,
+} from "./writer-repair.js";
 import { buildSettlerSystemPrompt, buildSettlerUserPrompt } from "./settler-prompts.js";
 import { buildObserverSystemPrompt, buildObserverUserPrompt } from "./observer-prompts.js";
 import { parseSettlerDeltaOutput } from "./settler-delta-parser.js";
 import { parseSettlementOutput } from "./settler-parser.js";
-import type { AuditIssue } from "./continuity.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
 import {
   detectCrossChapterRepetition,
@@ -72,19 +76,10 @@ export interface TokenUsage {
 }
 
 export type WriterRepairMode = ReviseMode;
+export type { ReviseMode, ReviseOutput } from "./writer-repair.js";
+export { DEFAULT_REVISE_MODE } from "./writer-repair.js";
 
-export interface RepairChapterInput {
-  readonly bookDir: string;
-  readonly chapterContent: string;
-  readonly chapterNumber: number;
-  readonly issues: ReadonlyArray<AuditIssue>;
-  readonly mode: WriterRepairMode;
-  readonly genre?: string;
-  readonly chapterIntent?: string;
-  readonly contextPackage?: ContextPackage;
-  readonly ruleStack?: RuleStack;
-  readonly lengthSpec?: LengthSpec;
-}
+export interface RepairChapterInput extends WriterRepairInput {}
 
 export interface WriteChapterOutput {
   readonly chapterNumber: number;
@@ -132,20 +127,12 @@ export class WriterAgent extends BaseAgent {
   }
 
   async repairChapter(input: RepairChapterInput): Promise<ReviseOutput> {
-    const reviser = new ReviserAgent(this.ctx);
-    return reviser.reviseChapter(
-      input.bookDir,
-      input.chapterContent,
-      input.chapterNumber,
-      input.issues,
-      input.mode,
-      input.genre,
+    return repairChapterWithWriter(
       {
-        chapterIntent: input.chapterIntent,
-        contextPackage: input.contextPackage,
-        ruleStack: input.ruleStack,
-        lengthSpec: input.lengthSpec,
+        projectRoot: this.ctx.projectRoot,
+        chat: (messages, options) => this.chat(messages, options),
       },
+      input,
     );
   }
 

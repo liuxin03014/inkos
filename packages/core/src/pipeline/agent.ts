@@ -1,7 +1,7 @@
 import { chatWithTools, type AgentMessage, type ToolDefinition } from "../llm/provider.js";
 import { PipelineRunner, type PipelineConfig } from "./runner.js";
 import type { Platform, Genre } from "../models/book.js";
-import { DEFAULT_REVISE_MODE, type ReviseMode } from "../agents/reviser.js";
+import { DEFAULT_REVISE_MODE, type ReviseMode } from "../agents/writer.js";
 
 /** Tool definitions for the agent loop. */
 const TOOLS: ReadonlyArray<ToolDefinition> = [

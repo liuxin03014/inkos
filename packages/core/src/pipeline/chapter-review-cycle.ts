@@ -1,6 +1,5 @@
 import type { AuditIssue, AuditResult } from "../agents/continuity.js";
-import type { ReviseOutput } from "../agents/reviser.js";
-import type { WriteChapterOutput } from "../agents/writer.js";
+import type { ReviseOutput, WriteChapterOutput } from "../agents/writer.js";
 import type { LengthSpec } from "../models/length-governance.js";
 
 export interface ChapterReviewCycleUsage {

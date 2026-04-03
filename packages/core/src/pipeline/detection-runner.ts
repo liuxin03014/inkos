@@ -7,7 +7,7 @@ import type { DetectionConfig } from "../models/project.js";
 import type { DetectionHistoryEntry } from "../models/detection.js";
 import type { AgentContext } from "../agents/base.js";
 import { detectAIContent, type DetectionResult } from "../agents/detector.js";
-import { ReviserAgent } from "../agents/reviser.js";
+import { WriterAgent } from "../agents/writer.js";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -84,20 +84,20 @@ export async function detectAndRewrite(
     attempts = i + 1;
 
     // Rewrite in anti-detect mode
-    const reviser = new ReviserAgent(ctx);
-    const reviseOutput = await reviser.reviseChapter(
+    const writer = new WriterAgent(ctx);
+    const reviseOutput = await writer.repairChapter({
       bookDir,
-      currentContent,
+      chapterContent: currentContent,
       chapterNumber,
-      [{
+      issues: [{
         severity: "warning",
         category: "AIGC检测",
         description: `AI检测分数 ${finalScore.toFixed(2)} 超过阈值 ${config.threshold}`,
         suggestion: "降低AI生成痕迹：增加段落长度差异、减少套话、用口语化表达替代书面语",
       }],
-      "anti-detect",
+      mode: "anti-detect",
       genre,
-    );
+    });
 
     if (reviseOutput.revisedContent.length === 0) break;
     currentContent = reviseOutput.revisedContent;
