@@ -165,9 +165,21 @@ Every genre includes a **fatigue word list** (e.g., "delve", "tapestry", "testam
 
 ## Key Features
 
+### Foundation Review (v1.1.0)
+
+A dedicated Foundation Reviewer Agent is now invoked during book creation. After the Architect generates the foundation settings, the Reviewer scores them across 5 dimensions on a 100-point scale (source-material DNA preservation, new narrative space, core conflict, opening pacing, pacing feasibility). Scores below 80 trigger automatic rejection, feeding review comments back to the Architect for regeneration. Fanfic and series modes require an original divergence point — retelling the source plot is not allowed.
+
+### Hook Seed Excerpt (v1.1.0)
+
+When resolving hooks, the system extracts the **original seed scene text** for each pending hook from `chapter_summaries` and injects it into the Writer's context. Instead of perfunctorily resolving a hook ID, the Writer sees something like "Planted in Chapter 2: when Xiao Yan's right hand touched the ring, a trace of warmth seeped out" — enabling it to write a continuation scene that naturally picks up the thread.
+
+### Review Reject Rollback (v1.1.0)
+
+`inkos review reject` now rolls back state to the snapshot before the rejected chapter, discarding downstream chapters and memory indexes. Chapters that fail audit are blocked from continuing to the next chapter, preventing bad drafts from polluting subsequent generation. `inkos write repair-state` can manually repair degraded chapters.
+
 ### 33-Dimension Audit + De-AI-ification
 
-The Continuity Auditor agent checks every draft across 33 dimensions: character memory, resource continuity, hook payoff, outline adherence, narrative pacing, emotional arcs, and more. Built-in AI-tell detection automatically catches "LLM voice" — overused words, monotonous sentence patterns, excessive summarization. Failed audits trigger an automatic revision loop.
+The Continuity Auditor agent checks every draft across 33 dimensions: character memory, resource continuity, hook payoff, outline adherence, narrative pacing, emotional arcs, and more. Built-in AI-tell detection automatically catches "LLM voice" — overused words, monotonous sentence patterns, excessive summarization. Failed audits trigger an automatic revision loop. New in v1.1.0: cross-chapter emotion monotony detection, title clustering detection, and chapter ending repetition detection.
 
 De-AI-ification rules are baked into the Writer agent's prompts: fatigue word lists, banned patterns, style fingerprint injection — reducing AI traces at the source. `revise --mode anti-detect` runs dedicated anti-detection rewriting on existing chapters.
 
@@ -204,13 +216,13 @@ This generates `story/runtime/chapter-XXXX.intent.md`, `context.json`, `rule-sta
 - If the chapter drifts outside the soft band, InkOS may run one corrective normalization pass (compress or expand) instead of hard-cutting prose
 - If the chapter still misses the hard range after that one pass, InkOS still saves it, but surfaces a visible length warning and telemetry in the result and chapter index
 
-### Continuation Writing
+### Continuation Writing / Series
 
-`inkos import chapters` imports existing novel text, auto reverse-engineers all 7 truth files (world state, character matrix, resource ledger, plot hooks, etc.), supports `Chapter N` and custom split patterns, and resumable import. After import, `inkos write next` seamlessly continues the story.
+`inkos import chapters` imports existing novel text, auto reverse-engineers all 7 truth files (world state, character matrix, resource ledger, plot hooks, etc.), supports `Chapter N` and custom split patterns, and resumable import. After import, a source-style fingerprint (`style_guide.md`) is automatically generated, and `inkos write next` seamlessly continues the story. Continuation, series, and prequels are all supported — write an independent new story based on the same worldview.
 
 ### Fan Fiction
 
-`inkos fanfic init --from source.txt --mode canon` creates a fanfic book from source material. Four modes: canon (faithful continuation), au (alternate universe), ooc (out of character), cp (ship-focused). Includes a canon importer, fanfic-specific audit dimensions, and information boundary controls to keep lore consistent.
+`inkos fanfic init --from source.txt --mode canon` creates a fanfic book from source material. Four modes: canon (faithful continuation), au (alternate universe), ooc (out of character), cp (ship-focused). Since v1.1.0, a **new spacetime setting** is mandatory — you must design an original divergence point and an independent core conflict; retelling the source plot is not allowed. Includes a canon importer, fanfic-specific audit dimensions, information boundary controls, and automatic style cloning.
 
 ### Multi-Model Routing
 

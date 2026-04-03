@@ -1,7 +1,7 @@
 ---
 name: inkos
-description: Autonomous novel writing CLI agent with web workbench (InkOS Studio) - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, EPUB export, AIGC detection, and fan fiction. Native English support with 10 built-in English genre profiles (LitRPG, Progression Fantasy, Isekai, Cultivation, System Apocalypse, Dungeon Core, Romantasy, Sci-Fi, Tower Climber, Cozy Fantasy). Also supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other). Multi-agent pipeline, two-phase writer (creative + settlement), 33-dimension auditing, token usage analytics, creative brief input, structured logging (JSON Lines), multi-model routing, custom OpenAI-compatible provider support, and InkOS Studio web UI for visual book management, chapter review, real-time writing progress, market radar, and analytics.
-version: 2.2.0
+description: Autonomous novel writing CLI agent with web workbench (InkOS Studio) - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, EPUB export, AIGC detection, and fan fiction. Native English support with 10 built-in English genre profiles (LitRPG, Progression Fantasy, Isekai, Cultivation, System Apocalypse, Dungeon Core, Romantasy, Sci-Fi, Tower Climber, Cozy Fantasy). Also supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other). Multi-agent pipeline with foundation reviewer, hook seed excerpt recovery, audit-driven repair loop, review reject state rollback, 33-dimension auditing, token usage analytics, creative brief input, structured logging (JSON Lines), multi-model routing, custom OpenAI-compatible provider support, and InkOS Studio web UI for visual book management, chapter review, real-time writing progress, market radar, and analytics.
+version: 2.3.0
 metadata: { "openclaw": { "emoji": "📖", "requires": { "bins": ["inkos", "node"], "env": [] }, "primaryEnv": "", "homepage": "https://github.com/Narcooo/inkos", "install": [{ "id": "npm", "kind": "node", "package": "@actalk/inkos", "label": "Install InkOS (npm)" }] } }
 ---
 
@@ -9,10 +9,11 @@ metadata: { "openclaw": { "emoji": "📖", "requires": { "bins": ["inkos", "node
 
 InkOS is a CLI tool for autonomous fiction writing powered by LLM agents. It orchestrates a multi-agent pipeline (Radar → Planner → Composer → Architect → Writer → Observer → Reflector → Normalizer → Auditor → Reviser) to generate, audit, and revise novel content with zero human intervention per chapter.
 
-The pipeline operates in three phases:
-- **Phase 1 (Creative Writing, temp 0.7)**: Planner generates chapter intent with hook agenda, Composer selects relevant context, Writer produces prose with length governance and dialogue-driven guidance.
-- **Phase 2 (State Settlement, temp 0.3)**: Observer over-extracts 9 categories of facts, Reflector outputs a JSON delta (not full markdown), code-layer applies Zod schema validation and immutable state update. Hook operations use upsert/mention/resolve/defer semantics.
-- **Phase 3 (Quality Loop)**: Normalizer adjusts chapter length, Auditor runs 33-dimension check including hook health analysis, Reviser auto-fixes critical issues. Self-correction loop runs until all critical issues clear.
+The pipeline operates in four phases:
+- **Phase 0 (Foundation Review)**: When creating a book, Foundation Reviewer Agent scores the Architect's output on 5 dimensions (source DNA, new narrative space, core conflict, opening momentum, pacing feasibility). Rejects below 80/100 with specific feedback for Architect to retry. Fanfic mode enforces original divergence point.
+- **Phase 1 (Creative Writing, temp 0.7)**: Planner generates chapter intent with hook agenda and seed excerpts, Composer selects relevant context including hook original seed text and chapter ending trail, Writer produces prose with length governance and dialogue-driven guidance.
+- **Phase 2 (State Settlement, temp 0.3)**: Observer over-extracts 9 categories of facts, Reflector outputs a JSON delta (not full markdown), code-layer applies Zod schema validation and immutable state update. Hook operations use upsert/mention/resolve/defer semantics. Chapter numbers anchored to contiguous durable artifacts.
+- **Phase 3 (Review Cycle)**: Normalizer adjusts chapter length, Auditor runs 33-dimension check including hook health, mood monotony, title clustering, and chapter ending repetition. Repair loop: assess → local-fix or rewrite → re-assess. Audit-failed chapters block continuation until repaired. State validation with settler retry and graceful degradation.
 
 Truth files are persisted as schema-validated JSON (`story/state/*.json`) with markdown projections for human readability. SQLite temporal memory database (`story/memory.db`) enables relevance-based retrieval on Node 22+.
 
@@ -284,9 +285,11 @@ inkos fanfic init --title "My Fanfic" --from source-novel.txt --mode canon
 # Modes: canon (faithful), au (alternate universe), ooc (out of character), cp (ship-focused)
 inkos fanfic init --title "What If" --from source.txt --mode au --genre other
 ```
-- Imports and analyzes source material automatically
+- Imports and analyzes source material automatically (canon + style fingerprint)
+- Foundation Reviewer enforces **new spacetime**: must have original divergence point, independent core conflict, 5-chapter ignition, 50% fresh scenes
 - Fanfic-specific audit dimensions and information boundary controls
 - Ensures new content stays consistent with source canon (or deliberately diverges in au/ooc modes)
+- Hook seed excerpts provide original scene text for natural payoff writing
 
 ## InkOS Studio (Web Workbench)
 
@@ -440,6 +443,8 @@ inkos genre copy xuanhuan
 | `inkos update` | Update to latest version | Self-update |
 | `inkos up/down` | Daemon mode | Background processing. Logs to `inkos.log` (JSON Lines). `-q` for quiet mode |
 | `inkos review list/approve-all` | Manage chapter approvals | Quality gate |
+| `inkos review reject <ch>` | Reject chapter + rollback state | Rolls back to pre-chapter snapshot, discards downstream |
+| `inkos write repair-state <ch>` | Rebuild truth files for degraded chapter | Re-runs settler without rewriting prose |
 | `inkos fanfic init` | Create fanfic from source material | `--from <file>`, `--mode canon/au/ooc/cp` |
 | `inkos genre list` | List all available genres | Shows English and Chinese genres with default language |
 | `inkos genre create <id>` | Create custom genre profile | `--name`, `--numerical`, `--power`, `--era` |
