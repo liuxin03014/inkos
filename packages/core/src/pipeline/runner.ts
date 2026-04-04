@@ -165,6 +165,9 @@ export interface ImportChaptersInput {
   readonly bookId: string;
   readonly chapters: ReadonlyArray<{ readonly title: string; readonly content: string }>;
   readonly resumeFrom?: number;
+  /** "continuation" (default) = pick up where the text left off, no new spacetime.
+   *  "series" = shared universe but independent new story, requires new spacetime. */
+  readonly importMode?: "continuation" | "series";
 }
 
 export interface ImportChaptersResult {
@@ -1869,14 +1872,16 @@ ${matrix}`,
         ).join("\n\n---\n\n");
 
         const architect = new ArchitectAgent(this.agentCtxFor("architect", input.bookId));
-        const reviewer = new FoundationReviewerAgent(this.agentCtxFor("foundation-reviewer", input.bookId));
-        const foundation = await this.generateAndReviewFoundation({
-          generate: (reviewFeedback) => architect.generateFoundationFromImport(book, allText, undefined, reviewFeedback),
-          reviewer,
-          mode: "series",
-          language: resolvedLanguage === "en" ? "en" : "zh",
-          stageLanguage: resolvedLanguage,
-        });
+        const isSeries = input.importMode === "series";
+        const foundation = isSeries
+          ? await this.generateAndReviewFoundation({
+              generate: (reviewFeedback) => architect.generateFoundationFromImport(book, allText, undefined, reviewFeedback, { importMode: "series" }),
+              reviewer: new FoundationReviewerAgent(this.agentCtxFor("foundation-reviewer", input.bookId)),
+              mode: "series",
+              language: resolvedLanguage === "en" ? "en" : "zh",
+              stageLanguage: resolvedLanguage,
+            })
+          : await architect.generateFoundationFromImport(book, allText);
         await architect.writeFoundationFiles(
           bookDir,
           foundation,

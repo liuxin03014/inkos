@@ -351,6 +351,7 @@ ${finalRequirementsPrompt}`;
     chaptersText: string,
     externalContext?: string,
     reviewFeedback?: string,
+    options?: { readonly importMode?: "continuation" | "series" },
   ): Promise<ArchitectOutput> {
     const { profile: gp, body: genreBody } =
       await readGenreProfile(this.ctx.projectRoot, book.genre);
@@ -531,6 +532,26 @@ ${numericalBlock}
 ${powerBlock}
 ${eraBlock}`;
 
+    const isSeries = options?.importMode === "series";
+    const continuationDirectiveEn = isSeries
+      ? `## Continuation Direction Requirements (Critical)
+The continuation portion (chapters in volume_outline that have not happened yet) must open up **new narrative space**:
+1. **New conflict dimension**: Do not merely stretch the imported conflict longer. Introduce at least one new conflict vector not yet covered by the source text (new character, new faction, new location, or new time horizon)
+2. **Ignite within 5 chapters**: The first continuation volume must establish a fresh suspense engine within 5 chapters. Do not spend 3 chapters recapping known information
+3. **Scene freshness**: At least 50% of key continuation scenes must happen in locations or situations not already used in the imported chapters
+4. **No repeated meeting rooms**: If the imported chapters end on a meeting/discussion beat, the continuation must restart from action instead of opening another meeting`
+      : `## Continuation Direction
+The volume_outline should naturally extend the existing narrative arc. Continue from where the imported chapters left off — advance existing conflicts, pay off planted hooks, and introduce new complications that arise organically from the current situation. Do not recap known information.`;
+    const continuationDirectiveZh = isSeries
+      ? `## 续写方向要求（关键）
+续写部分（volume_outline 中尚未发生的章节）必须设计**新的叙事空间**：
+1. **新冲突维度**：续写不能只是把导入章节的冲突继续拉长。必须引入至少一个原文未涉及的新冲突方向（新角色、新势力、新地点、新时间跨度）
+2. **5章内引爆**：续写的第一卷必须在前5章内建立新悬念，不允许用3章回顾已知信息
+3. **场景新鲜度**：续写部分至少50%的关键场景发生在导入章节未出现的地点或情境中
+4. **不重复会议**：如果导入章节以会议/讨论结束，续写必须从行动开始，不能再开一轮会`
+      : `## 续写方向
+卷纲应自然延续已有叙事弧线。从导入章节的结尾处接续——推进现有冲突、兑现已埋伏笔、引入从当前局势中有机产生的新变数。不要回顾已知信息。`;
+
     const systemPrompt = resolvedLanguage === "en"
       ? `You are a professional web-fiction architect. Your task is to reverse-engineer a complete foundation from existing chapters.${contextBlock}
 
@@ -545,12 +566,7 @@ This is not a zero-to-one foundation pass. You must extract durable story truth 
 
 All output sections — story_bible, volume_outline, book_rules, current_state, and pending_hooks — MUST be written in English. Keep the === SECTION: === tags unchanged.
 
-## Continuation Direction Requirements (Critical)
-The continuation portion (chapters in volume_outline that have not happened yet) must open up **new narrative space**:
-1. **New conflict dimension**: Do not merely stretch the imported conflict longer. Introduce at least one new conflict vector not yet covered by the source text (new character, new faction, new location, or new time horizon)
-2. **Ignite within 5 chapters**: The first continuation volume must establish a fresh suspense engine within 5 chapters. Do not spend 3 chapters recapping known information
-3. **Scene freshness**: At least 50% of key continuation scenes must happen in locations or situations not already used in the imported chapters
-4. **No repeated meeting rooms**: If the imported chapters end on a meeting/discussion beat, the continuation must restart from action instead of opening another meeting
+${continuationDirectiveEn}
 ${reviewFeedbackBlock}
 ## Book Metadata
 
@@ -595,12 +611,7 @@ ${keyPrinciplesPrompt}`
 4. 从最新章节状态推断 current_state（反映最后一章结束时的状态）
 5. 从正文中识别已埋伏笔 → 生成 pending_hooks
 
-## 续写方向要求（关键）
-续写部分（volume_outline 中尚未发生的章节）必须设计**新的叙事空间**：
-1. **新冲突维度**：续写不能只是把导入章节的冲突继续拉长。必须引入至少一个原文未涉及的新冲突方向（新角色、新势力、新地点、新时间跨度）
-2. **5章内引爆**：续写的第一卷必须在前5章内建立新悬念，不允许用3章回顾已知信息
-3. **场景新鲜度**：续写部分至少50%的关键场景发生在导入章节未出现的地点或情境中
-4. **不重复会议**：如果导入章节以会议/讨论结束，续写必须从行动开始，不能再开一轮会
+${continuationDirectiveZh}
 ${reviewFeedbackBlock}
 ## 书籍信息
 

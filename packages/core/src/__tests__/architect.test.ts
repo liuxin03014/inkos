@@ -145,7 +145,7 @@ describe("ArchitectAgent", () => {
     expect(messages[0]?.content).not.toContain("## 01_世界观");
     expect(messages[0]?.content).not.toContain("## 叙事视角");
     expect(messages[0]?.content).toContain("## Working Mode");
-    expect(messages[0]?.content).toContain("## Continuation Direction Requirements (Critical)");
+    expect(messages[0]?.content).toContain("## Continuation Direction");
     expect(messages[0]?.content).not.toContain("## 工作模式");
     expect(messages[0]?.content).not.toContain("## 续写方向要求（关键）");
   });

@@ -2915,6 +2915,7 @@ describe("PipelineRunner", () => {
         chapters: [
           { title: "Prelude", content: chapterContent },
         ],
+        importMode: "series",
       });
 
       expect(result.importedCount).toBe(1);
