@@ -237,14 +237,12 @@ export async function runChapterReviewCycle(params: {
       }
 
       params.assertChapterContentNotEmpty(reviseOutput.revisedContent, `repair iteration ${iteration + 1}`);
+      const revisedContent = reviseOutput.revisedContent;
+      const revisedWordCount = countChapterLength(revisedContent, params.lengthSpec.countingMode);
 
-      // Re-normalize after revision (REVISED_CONTENT can blow up length)
-      const postReviseNorm = await normalizeUntilInRange(reviseOutput.revisedContent);
-      normalizeApplied = normalizeApplied || postReviseNorm.applied;
-      const revisedContent = postReviseNorm.content;
-      const revisedWordCount = postReviseNorm.wordCount;
-
-      // Re-assess the revised + normalized content
+      // Re-assess revised content. If REVISED_CONTENT drifted on length,
+      // lengthInRange will be false → isPassed fails → bestSnapshot picks
+      // the earlier in-range version. No in-loop normalize needed.
       const nextAssessment = await assess(revisedContent, { temperature: 0 });
 
       snapshots.push({
