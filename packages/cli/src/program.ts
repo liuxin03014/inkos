@@ -26,6 +26,7 @@ import { importCommand } from "./commands/import.js";
 import { fanficCommand } from "./commands/fanfic.js";
 import { studioCommand } from "./commands/studio.js";
 import { consolidateCommand } from "./commands/consolidate.js";
+import { createInteractCommand, type InteractCommandHooks } from "./commands/interact.js";
 import { createTuiCommand } from "./commands/tui.js";
 import { launchTui } from "./tui/app.js";
 
@@ -34,6 +35,8 @@ const { version } = require("../package.json") as { version: string };
 
 export interface ProgramHooks {
   readonly launchTui?: (projectRoot: string) => Promise<void> | void;
+  readonly runInteraction?: InteractCommandHooks["runInteraction"];
+  readonly readInteractionInput?: InteractCommandHooks["readInput"];
 }
 
 export function createProgram(hooks: ProgramHooks = {}): Command {
@@ -78,6 +81,10 @@ export function createProgram(hooks: ProgramHooks = {}): Command {
   program.addCommand(fanficCommand);
   program.addCommand(studioCommand);
   program.addCommand(consolidateCommand);
+  program.addCommand(createInteractCommand({
+    runInteraction: hooks.runInteraction,
+    readInput: hooks.readInteractionInput,
+  }));
   program.addCommand(createTuiCommand({ launchTui: hooks.launchTui }));
 
   return program;
