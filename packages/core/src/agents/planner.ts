@@ -492,6 +492,13 @@ export class PlannerAgent extends BaseAgent {
         return inlineContent;
       }
 
+      // For "章节范围" format, the volume title is above this line.
+      // Collect the heading + all content below until the next heading.
+      const sectionContent = this.extractSectionAroundRange(lines, index);
+      if (sectionContent) {
+        return sectionContent;
+      }
+
       const nextContent = this.findNextOutlineContent(lines, index + 1);
       if (nextContent) {
         return nextContent;
@@ -534,6 +541,51 @@ export class PlannerAgent extends BaseAgent {
     if (!cleaned) return undefined;
     if (/^[*_`~:：-]+$/.test(cleaned)) return undefined;
     return cleaned;
+  }
+
+  /**
+   * For "章节范围：13-17章" format, extract the full section:
+   * look upward for the volume heading, then collect everything
+   * from the heading down to the next heading of the same or higher level.
+   */
+  private extractSectionAroundRange(lines: ReadonlyArray<string>, rangeLineIndex: number): string | undefined {
+    // Walk backward to find the nearest heading (### or ##)
+    // Only activate for "章节范围" style outlines where the heading is above.
+    let headingIndex = -1;
+    for (let i = rangeLineIndex - 1; i >= 0; i--) {
+      if (lines[i]!.startsWith("#")) {
+        headingIndex = i;
+        break;
+      }
+      // Stop if we hit another range/anchor line (means no heading above)
+      if (this.matchAnyRangeOutlineLine(lines[i]!) || this.matchAnyExactOutlineLine(lines[i]!)) {
+        break;
+      }
+    }
+
+    // If no heading found above, this isn't the "章节范围" format — bail out
+    if (headingIndex < 0) {
+      return undefined;
+    }
+
+    // Determine the heading level to know where this section ends
+    const headingLine = lines[headingIndex]!;
+    const headingLevel = headingLine.match(/^(#+)/)?.[1]?.length ?? 3;
+
+    // Collect lines from heading to next same-or-higher heading
+    const sectionLines: string[] = [];
+    for (let i = headingIndex; i < lines.length; i++) {
+      if (i > headingIndex) {
+        const nextHeadingMatch = lines[i]!.match(/^(#+)/);
+        if (nextHeadingMatch && (nextHeadingMatch[1]?.length ?? 0) <= headingLevel) {
+          break;
+        }
+      }
+      sectionLines.push(lines[i]!);
+    }
+
+    const content = sectionLines.join("\n").trim();
+    return content.length > 0 ? content : undefined;
   }
 
   private findNextOutlineContent(lines: ReadonlyArray<string>, startIndex: number): string | undefined {
@@ -604,6 +656,9 @@ export class PlannerAgent extends BaseAgent {
     const patterns = [
       /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?Chapter\s*(\d+)\s*[-~–—]\s*(\d+)\b(?:[:：-])?(?:\*\*)?\s*(.*)$/i,
       /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?第\s*(\d+)\s*[-~–—]\s*(\d+)\s*章(?:[:：-])?(?:\*\*)?\s*(.*)$/i,
+      // Match "**章节范围**：13-17章" / "- **章节范围**：13-17章" format
+      /^(?:[-*]\s+)?(?:\*\*)?章节范围(?:\*\*)?[：:]\s*(\d+)\s*[-~–—]\s*(\d+)\s*章\s*(.*)$/,
+      /^(?:[-*]\s+)?(?:\*\*)?Chapter\s*[Rr]ange(?:\*\*)?[：:]\s*(\d+)\s*[-~–—]\s*(\d+)\b\s*(.*)$/i,
     ];
 
     return patterns
