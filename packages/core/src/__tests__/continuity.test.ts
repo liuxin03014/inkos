@@ -157,7 +157,7 @@ describe("ContinuityAuditor", () => {
       expect(systemPrompt).toContain("Hook Check");
       expect(systemPrompt).toContain("Outline Drift Check");
       expect(systemPrompt).toContain("stays dormant long enough to feel abandoned");
-      expect(systemPrompt).toContain("holds one pressure shape across a run");
+      expect(systemPrompt).toContain("3-question test");
       expect(systemPrompt).toContain("same mode long enough to flatten rhythm");
       expect(systemPrompt).not.toContain("more than 5 chapters");
       expect(systemPrompt).not.toContain("3 straight chapters");

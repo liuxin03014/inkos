@@ -165,6 +165,28 @@ function buildDimensionNote(
     }
   }
 
+  // v10: Enhanced dimension notes with writing methodology awareness
+  if (id === 7) {
+    return language === "en"
+      ? "Check pacing rhythm: Is there emotional wave variation (tension → release → bigger tension)? Are daily/quiet scenes serving the main plot (planting hooks, advancing relationships) or just filler? Does the chapter have at least one scene that changes the status quo?"
+      : "检查节奏波形：本章情绪是否与前2章形成波动变化（压制→释放→更大压制）？日常/过渡段是否为主线服务（埋伏笔/推关系/建反差）还是纯填充？本章是否有至少一个改变现状的场景？";
+  }
+
+  if (id === 15) {
+    const base = gp.satisfactionTypes.length > 0
+      ? (language === "en" ? `Payoff types: ${gp.satisfactionTypes.join(", ")}. ` : `爽点类型：${gp.satisfactionTypes.join("、")}。`)
+      : "";
+    return language === "en"
+      ? `${base}Check desire engine: Has the chapter created an emotional gap (reader wants release) OR delivered a payoff that exceeds expectations? A payoff that only satisfies 70% of built-up anticipation counts as diluted.`
+      : `${base}检查欲望驱动：本章是否制造了情绪缺口（读者渴望释放）或完成了超出预期的兑现？只满足读者70%期待的兑现等于爽点虚化。`;
+  }
+
+  if (id === 25) {
+    return language === "en"
+      ? "Cross-check character behavior against the 3-question test: (1) Why does the character do this? (2) Does it match their established profile? (3) Would a reader who only read prior chapters find it jarring? Also check if character's emotional state progresses or stagnates."
+      : "人设三问检查：(1)角色为什么这么做？(2)符合之前建立的人设吗？(3)只看过前面章节的读者会觉得突兀吗？同时检查角色情绪弧线是否在推进还是停滞。";
+  }
+
   switch (id) {
     case 19:
       return language === "en"

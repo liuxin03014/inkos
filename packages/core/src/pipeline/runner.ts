@@ -31,6 +31,7 @@ import type { LengthSpec, LengthTelemetry } from "../models/length-governance.js
 import type { ContextPackage, RuleStack } from "../models/input-governance.js";
 import { buildLengthSpec, countChapterLength, formatLengthCount, isOutsideHardRange, isOutsideSoftRange, resolveLengthCountingMode, type LengthLanguage } from "../utils/length-metrics.js";
 import { analyzeLongSpanFatigue } from "../utils/long-span-fatigue.js";
+import { buildWritingMethodologySection } from "../utils/writing-methodology.js";
 import { loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts } from "../state/runtime-state-store.js";
 import { rewriteStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
 import { readFile, readdir, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
@@ -1650,8 +1651,13 @@ export class PipelineRunner {
       },
     ], { temperature: 0.3, maxTokens: 4096 });
 
-    await writeFile(join(storyDir, "style_guide.md"), response.content, "utf-8");
-    return response.content;
+    const book = await this.state.loadBookConfig(bookId);
+    const { profile: gp } = await this.loadGenreProfile(book.genre);
+    const lang = (book.language ?? gp.language) === "en" ? "en" as const : "zh" as const;
+    const craftMethodology = buildWritingMethodologySection(lang);
+    const fullStyleGuide = `${response.content}\n\n${craftMethodology}`;
+    await writeFile(join(storyDir, "style_guide.md"), fullStyleGuide, "utf-8");
+    return fullStyleGuide;
   }
 
   /**
