@@ -1409,4 +1409,74 @@ describe("PlannerAgent", () => {
     expect(intentMarkdown).toContain("12 active hooks");
     expect(intentMarkdown).not.toContain("8 active hooks");
   });
+
+  it("matches multi-line 章节范围 format and distributes beats across chapters", async () => {
+    await writeFile(
+      join(storyDir, "volume_outline.md"),
+      [
+        "## 已有章节部分",
+        "",
+        "### 卷一：开端",
+        "- **章节范围**：1-3章",
+        "- **核心冲突**：初始设定",
+        "- **关键转折**：",
+        "  1. 主角登场并发现异常",
+        "  2. 遭遇第一次危机",
+        "  3. 获得关键线索",
+        "",
+        "## 后续预测部分",
+        "",
+        "### 卷二：深入",
+        "- **章节范围**：4-8章",
+        "- **核心冲突**：深入调查",
+        "- **关键转折**：",
+        "  1. 抵达新地点，发现物证",
+        "  2. 与对手首次正面交锋",
+        "  3. 盟友背叛，局势逆转",
+        "  4. 主角被迫转入地下",
+        "  5. 发现幕后真相的第一条线",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    // Chapter 4 should get beat 0 (first beat of 卷二): "抵达新地点"
+    const result4 = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 4,
+    });
+    expect(result4.intent.outlineNode).toContain("抵达新地点");
+
+    // Chapter 6 should get beat 2 (third beat): "盟友背叛"
+    const result6 = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 6,
+    });
+    expect(result6.intent.outlineNode).toContain("盟友背叛");
+
+    // Chapter 8 should get beat 4 (fifth beat): "幕后真相"
+    const result8 = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 8,
+    });
+    expect(result8.intent.outlineNode).toContain("幕后真相");
+
+    // Chapter 5 should get beat 1: "正面交锋"
+    const result5 = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 5,
+    });
+    expect(result5.intent.outlineNode).toContain("正面交锋");
+  });
 });

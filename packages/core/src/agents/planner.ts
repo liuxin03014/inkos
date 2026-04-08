@@ -493,10 +493,14 @@ export class PlannerAgent extends BaseAgent {
       }
 
       // For "章节范围" format, the volume title is above this line.
-      // Collect the heading + all content below until the next heading.
+      // Collect the heading + all content below until the next heading,
+      // then pick the beat corresponding to this specific chapter.
+      const rangeStart = Number(match[1]);
       const sectionContent = this.extractSectionAroundRange(lines, index);
       if (sectionContent) {
-        return sectionContent;
+        const beatIndex = chapterNumber - rangeStart;
+        const specificBeat = this.extractNumberedBeat(sectionContent, beatIndex);
+        return specificBeat ?? sectionContent;
       }
 
       const nextContent = this.findNextOutlineContent(lines, index + 1);
@@ -586,6 +590,27 @@ export class PlannerAgent extends BaseAgent {
 
     const content = sectionLines.join("\n").trim();
     return content.length > 0 ? content : undefined;
+  }
+
+  /**
+   * Extract the Nth numbered beat from a section.
+   * Beats are lines starting with "1.", "2.", "3." etc. in "关键转折" blocks.
+   * beatIndex=0 → 1st beat, beatIndex=1 → 2nd beat, etc.
+   */
+  private extractNumberedBeat(section: string, beatIndex: number): string | undefined {
+    if (beatIndex < 0) return undefined;
+
+    const beats: string[] = [];
+    for (const line of section.split("\n")) {
+      const trimmed = line.trim();
+      // Match "1. ...", "2. ..." or "1) ..." patterns
+      if (/^\d+[.)]\s/.test(trimmed)) {
+        beats.push(trimmed.replace(/^\d+[.)]\s*/, ""));
+      }
+    }
+
+    if (beats.length === 0 || beatIndex >= beats.length) return undefined;
+    return beats[beatIndex];
   }
 
   private findNextOutlineContent(lines: ReadonlyArray<string>, startIndex: number): string | undefined {
