@@ -163,11 +163,40 @@ const ASCII_LOGO = [
 
 /* ── Input area ── */
 
+export interface InputChrome {
+  readonly width: number;
+  readonly topBorder: string;
+  readonly helperLine: string;
+  readonly bottomBorder: string;
+  readonly promptPrefix: string;
+  readonly outerGapLines: number;
+}
+
+export function buildInputChrome(columns = process.stdout.columns ?? 80): InputChrome {
+  const width = Math.max(48, Math.min(columns - 6, 84));
+  const innerWidth = Math.max(24, width - 4);
+  const helperText = stripAnsi(c("Ask InkOS to write, revise, or explain…", dim));
+  const helper = helperText.length > innerWidth
+    ? helperText.slice(0, innerWidth)
+    : helperText.padEnd(innerWidth, " ");
+
+  return {
+    width,
+    topBorder: `  ${c(`╭${"─".repeat(width - 2)}╮`, gray)}`,
+    helperLine: `  ${c("│", gray)} ${c(helper, dim)} ${c("│", gray)}`,
+    bottomBorder: `  ${c(`╰${"─".repeat(width - 2)}╯`, gray)}`,
+    promptPrefix: `  ${c("│", gray)} ${c("❯", gray)} `,
+    outerGapLines: 1,
+  };
+}
+
 export function drawInputArea(): void {
-  const w = process.stdout.columns ?? 80;
-  console.log();
-  console.log();
-  console.log(c("─".repeat(w), gray));
+  const chrome = buildInputChrome();
+  for (let i = 0; i < chrome.outerGapLines; i += 1) {
+    console.log();
+  }
+  console.log(chrome.topBorder);
+  console.log(chrome.helperLine);
 }
 
 export function printInputSeparator(): void {

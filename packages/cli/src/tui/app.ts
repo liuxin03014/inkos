@@ -29,6 +29,7 @@ import {
   printStyledStatus,
   printInputSeparator,
   drawInputArea,
+  buildInputChrome,
 } from "./effects.js";
 
 /* ── Version ── */
@@ -222,7 +223,7 @@ export async function launchTui(
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: `  ${c("❯", gray)} `,
+    prompt: buildInputChrome().promptPrefix,
   });
 
   const cleanup = () => {
@@ -233,8 +234,9 @@ export async function launchTui(
   };
 
   const promptInput = () => {
+    const chrome = buildInputChrome();
+    rl.setPrompt(chrome.promptPrefix);
     drawInputArea();
-    console.log();
     rl.prompt();
   };
 
@@ -250,12 +252,15 @@ export async function launchTui(
 
   for await (const line of rl) {
     const input = line.trim();
+    const chrome = buildInputChrome();
 
     if (!input) {
+      console.log(chrome.bottomBorder);
       promptInput();
       continue;
     }
 
+    console.log(chrome.bottomBorder);
     console.log();
 
     // Built-in TUI commands
