@@ -164,7 +164,7 @@ export class PlannerAgent extends BaseAgent {
       },
     ], {
       temperature: 0.2,
-      maxTokens: 1600,
+      maxTokens: 4096,
     });
 
     const parsed = this.tryParseChapterBrief(response.content);
