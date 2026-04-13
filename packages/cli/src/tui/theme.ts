@@ -96,9 +96,9 @@ const appleTerminalDarkPalette: ThemePalette = {
 };
 
 const appleTerminalLightPalette: ThemePalette = {
-  warmAccent: "yellow",
+  warmAccent: "gray",
   warmMuted: "gray",
-  warmReply: "blue",
+  warmReply: "black",
   warmBorder: "gray",
   statusSuccess: "green",
   statusError: "red",
