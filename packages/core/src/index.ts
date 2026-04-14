@@ -68,9 +68,10 @@ export {
   type ComposeChapterOutput,
 } from "./agents/composer.js";
 export {
-  buildPlannerSystemPrompt,
-  buildPlannerUserPrompt,
-  type PlannerPromptInput,
+  PLANNER_MEMO_SYSTEM_PROMPT,
+  PLANNER_MEMO_USER_TEMPLATE,
+  buildPlannerUserMessage,
+  type PlannerUserMessageInput,
 } from "./agents/planner-prompts.js";
 export {
   gatherPlanningMaterials,

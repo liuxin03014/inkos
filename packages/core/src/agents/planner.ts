@@ -5,7 +5,6 @@ import type { BookConfig } from "../models/book.js";
 import { parseBookRules } from "../models/book-rules.js";
 import {
   ChapterIntentSchema,
-  ChapterMemoSchema,
   type ChapterIntent,
   type ChapterMemo,
 } from "../models/input-governance.js";
@@ -17,6 +16,24 @@ import {
   gatherPlanningMaterials,
   loadPlanningSeedMaterials,
 } from "../utils/planning-materials.js";
+import { parseMemo, PlannerParseError } from "../utils/chapter-memo-parser.js";
+import {
+  PLANNER_MEMO_SYSTEM_PROMPT,
+  buildPlannerUserMessage,
+} from "./planner-prompts.js";
+import {
+  composeCurrentArcProse,
+  extractCollaboratorRows,
+  extractOpponentRows,
+  extractProtagonistRow,
+  extractRelevantThreads,
+  formatRecentSummaries,
+  readBookRules,
+  readCharacterMatrix,
+  readEmotionalArcs,
+  readPendingHooks,
+  readSubplotBoard,
+} from "./planner-context.js";
 
 export interface PlanChapterInput {
   readonly book: BookConfig;
@@ -33,17 +50,21 @@ export interface PlanChapterOutput {
   readonly runtimePath: string;
 }
 
+const MEMO_RETRY_LIMIT = 3;
+
 /**
- * Phase 1 transitional planner.
+ * Phase 3 planner.
  *
- * Phase 3 (new.txt) will replace this with an LLM-driven memo generator that
- * fills `ChapterMemo.body` with prose across the seven narrative sections.
- * For now the planner produces:
- *   - a simplified ChapterIntent (goal + outline + keep/avoid/style)
- *   - a stub ChapterMemo with empty body
+ * Produces:
+ *   - a simplified ChapterIntent (goal + outline + keep/avoid/style) —
+ *     still deterministic, used for retrieval hints and the intent markdown.
+ *   - a full ChapterMemo (YAML frontmatter + 7-section markdown body) via
+ *     LLM call + strict parser.
  *
- * The pipeline still runs end-to-end; the writer simply reads the minimal
- * intent until the memo rewrite lands.
+ * Retry policy: up to 3 attempts. Each failed parse appends an error
+ * feedback block to the user message and re-invokes the LLM. On the third
+ * failure we surface `PlannerParseError` — never silently truncate or
+ * rename fields.
  */
 export class PlannerAgent extends BaseAgent {
   get name(): string {
@@ -100,14 +121,15 @@ export class PlannerAgent extends BaseAgent {
       styleEmphasis,
     });
 
-    // Phase 1 stub memo. Phase 3 rewrites this with full prose.
-    const isGoldenOpening = input.chapterNumber <= 3;
-    const memo = ChapterMemoSchema.parse({
-      chapter: input.chapterNumber,
-      goal,
+    const isGoldenOpening = this.isGoldenOpeningChapter(input.book.language, input.chapterNumber);
+    const memo = await this.planChapterMemo({
+      storyDir,
+      bookDir: input.bookDir,
+      chapterNumber: input.chapterNumber,
       isGoldenOpening,
-      body: "",
-      hookRefs: [],
+      fallbackGoal: goal,
+      chapterSummariesRaw: seedMaterials.chapterSummariesRaw,
+      previousEndingExcerpt: seedMaterials.previousEndingExcerpt,
     });
 
     const runtimePath = join(runtimeDir, `chapter-${String(input.chapterNumber).padStart(4, "0")}.intent.md`);
@@ -128,6 +150,75 @@ export class PlannerAgent extends BaseAgent {
       plannerInputs: materials.plannerInputs,
       runtimePath,
     };
+  }
+
+  /**
+   * Invoke the LLM to produce a 7-section memo and parse it. Retries up to
+   * 3 times on parse failure, injecting the error message back into the user
+   * prompt so the LLM can correct itself.
+   */
+  async planChapterMemo(input: {
+    readonly storyDir: string;
+    readonly bookDir: string;
+    readonly chapterNumber: number;
+    readonly isGoldenOpening: boolean;
+    readonly fallbackGoal: string;
+    readonly chapterSummariesRaw: string;
+    readonly previousEndingExcerpt?: string;
+  }): Promise<ChapterMemo> {
+    const [characterMatrix, subplotBoard, emotionalArcs, pendingHooks, bookRulesRaw] = await Promise.all([
+      readCharacterMatrix(input.storyDir),
+      readSubplotBoard(input.storyDir),
+      readEmotionalArcs(input.storyDir),
+      readPendingHooks(input.storyDir),
+      readBookRules(input.storyDir),
+    ]);
+
+    const userMessage = buildPlannerUserMessage({
+      chapterNumber: input.chapterNumber,
+      previousChapterEndingExcerpt: input.previousEndingExcerpt?.trim()
+        ? input.previousEndingExcerpt.trim()
+        : "（本章为起始章，无前章）",
+      recentSummaries: formatRecentSummaries(input.chapterSummariesRaw, input.chapterNumber, 3),
+      currentArcProse: composeCurrentArcProse(subplotBoard, emotionalArcs, input.chapterNumber),
+      protagonistMatrixRow: extractProtagonistRow(characterMatrix),
+      opponentRows: extractOpponentRows(characterMatrix, 3),
+      collaboratorRows: extractCollaboratorRows(characterMatrix, 3),
+      relevantThreads: extractRelevantThreads(pendingHooks, subplotBoard),
+      isGoldenOpening: input.isGoldenOpening,
+      bookRulesRelevant: bookRulesRaw.trim().length > 0 ? bookRulesRaw.trim() : "（暂无 book_rules 条目）",
+    });
+
+    let currentUserMessage = userMessage;
+    let lastError: PlannerParseError | undefined;
+
+    for (let attempt = 0; attempt < MEMO_RETRY_LIMIT; attempt += 1) {
+      const response = await this.chat(
+        [
+          { role: "system", content: PLANNER_MEMO_SYSTEM_PROMPT },
+          { role: "user", content: currentUserMessage },
+        ],
+        { temperature: 0.7, maxTokens: 2000 },
+      );
+
+      try {
+        return parseMemo(response.content, input.chapterNumber, input.isGoldenOpening);
+      } catch (error) {
+        if (!(error instanceof PlannerParseError)) {
+          throw error;
+        }
+        lastError = error;
+        this.log?.warn(`[planner] memo parse failed (attempt ${attempt + 1}/${MEMO_RETRY_LIMIT}): ${error.message}`);
+        currentUserMessage = `${userMessage}\n\n## 上次输出的错误\n${error.message}\n请修正后重新输出。`;
+      }
+    }
+
+    throw lastError ?? new PlannerParseError("memo planner exhausted retries without a specific error");
+  }
+
+  private isGoldenOpeningChapter(language: string | undefined, chapterNumber: number): boolean {
+    const isZh = (language ?? "zh").toLowerCase().startsWith("zh");
+    return isZh ? chapterNumber <= 3 : chapterNumber <= 5;
   }
 
   private buildArcContext(
@@ -579,7 +670,10 @@ export class PlannerAgent extends BaseAgent {
       ? intent.styleEmphasis.map((item) => `- ${item}`).join("\n")
       : "- none";
 
-    const memoBody = memo.body.trim() ? memo.body : (language === "en" ? "(empty — Phase 3 fills this)" : "(空——待 Phase 3 填充)");
+    const memoBody = memo.body.trim();
+    const threadRefsLine = memo.threadRefs.length > 0
+      ? memo.threadRefs.map((id) => `- ${id}`).join("\n")
+      : "- (none)";
 
     return [
       "# Chapter Intent",
@@ -604,6 +698,9 @@ export class PlannerAgent extends BaseAgent {
       "",
       "## Chapter Memo",
       `- isGoldenOpening: ${memo.isGoldenOpening ? "true" : "false"}`,
+      "",
+      "### Thread Refs",
+      threadRefsLine,
       "",
       "### Body",
       memoBody,
