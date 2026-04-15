@@ -66,3 +66,32 @@ export function parseBookRules(raw: string): ParsedBookRules {
   const rules = BookRulesSchema.parse({});
   return { rules, body: stripped.trim() };
 }
+
+/**
+ * Stricter variant of parseBookRules: returns null if the input has no valid
+ * YAML frontmatter OR if the frontmatter fails to parse / validate. Unlike
+ * parseBookRules, this never falls back to default rules — callers can use
+ * the null return to trigger their own fallback (e.g. legacy book_rules.md).
+ *
+ * Phase 5 hotfix 3: readBookRules() uses this to detect a broken YAML block
+ * on story_frame.md and fall back to legacy book_rules.md instead of
+ * silently clearing protagonist / prohibitions / genreLock.
+ */
+export function tryParseBookRulesFrontmatter(
+  raw: string,
+  onError?: (error: unknown) => void,
+): ParsedBookRules | null {
+  const stripped = raw.replace(/^```(?:md|markdown|yaml)?\s*\n/, "").replace(/\n```\s*$/, "");
+  const fmMatch = stripped.match(/---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+  if (!fmMatch) return null;
+
+  try {
+    const frontmatter = yaml.load(fmMatch[1]) as Record<string, unknown>;
+    const rules = BookRulesSchema.parse(frontmatter);
+    const body = fmMatch[2].trim();
+    return { rules, body };
+  } catch (err) {
+    if (onError) onError(err);
+    return null;
+  }
+}

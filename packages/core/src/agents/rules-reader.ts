@@ -2,7 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseGenreProfile, type ParsedGenreProfile } from "../models/genre-profile.js";
-import { parseBookRules, type ParsedBookRules } from "../models/book-rules.js";
+import { parseBookRules, tryParseBookRulesFrontmatter, type ParsedBookRules } from "../models/book-rules.js";
 import { BookConfigSchema } from "../models/book.js";
 
 const BUILTIN_GENRES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../genres");
@@ -109,9 +109,17 @@ export async function readBookRules(bookDir: string): Promise<ParsedBookRules | 
     // outline prose and must NOT leak into ParsedBookRules.body.
     const frontmatterMatch = storyFrameRaw.match(/^\s*(---\s*\n[\s\S]*?\n---\s*)(?:\n|$)/);
     if (frontmatterMatch) {
-      // Pass only the frontmatter block (no trailing prose). parseBookRules
-      // will produce an empty body, which is exactly what we want.
-      return parseBookRules(frontmatterMatch[1]);
+      // Phase 5 hotfix 3: use the strict parser so a broken YAML block does
+      // NOT silently zero out protagonist / prohibitions / genreLock. If the
+      // frontmatter is malformed we log and fall through to legacy.
+      const parsed = tryParseBookRulesFrontmatter(frontmatterMatch[1], (err) => {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[rules-reader] story_frame.md frontmatter is malformed at ${bookDir}/story/outline/story_frame.md — falling back to legacy book_rules.md. Error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+      if (parsed) return parsed;
+      // fall through to legacy fallback below
     }
   }
 
