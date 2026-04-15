@@ -137,11 +137,14 @@ describe("ArchitectAgent — Phase 7 extended hook frontmatter", () => {
     // (half_life) so architect-supplied values persist through the projection
     // roundtrip and are read by hook-stale-detection. Hooks without an explicit
     // half_life render an empty cell (parser falls back to timing default).
-    expect(result.pendingHooks).toContain("| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 上游依赖 | 回收卷 | 核心 | 半衰期 | 备注 |");
-    expect(result.pendingHooks).toContain("| H01 | 1 | 主线 | 未开启 | 0 | 终章揭晓 | 终局 | 无 | 第3卷终章前 | 是 | 80 | 父亲笔记本 |");
-    expect(result.pendingHooks).toContain("| H02 | 3 | 谜团 | 未开启 | 0 | 第2卷揭开 | 中程 | [H01] | 第2卷中段 | 否 | 30 | 码头名单碎片 |");
-    // H03 omits half_life; cell renders empty.
-    expect(result.pendingHooks).toContain("| H03 | 7 | 小承诺 | 未开启 | 0 | 15章 | 近期 | 无 | 第1卷末 | 否 |  | 对妹妹的承诺 |");
+    // Hotfix 2 adds a 13th `升级` (promoted) column — architect computes it
+    // from core_hook / depends_on / cross_volume at seed time. H01 (core=是)
+    // and H02 (depends_on=[H01]) both get promoted=是; H03 has no rule firing.
+    expect(result.pendingHooks).toContain("| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 上游依赖 | 回收卷 | 核心 | 半衰期 | 升级 | 备注 |");
+    expect(result.pendingHooks).toContain("| H01 | 1 | 主线 | 未开启 | 0 | 终章揭晓 | 终局 | 无 | 第3卷终章前 | 是 | 80 | 是 | 父亲笔记本 |");
+    expect(result.pendingHooks).toContain("| H02 | 3 | 谜团 | 未开启 | 0 | 第2卷揭开 | 中程 | [H01] | 第2卷中段 | 否 | 30 | 是 | 码头名单碎片 |");
+    // H03 omits half_life; cell renders empty. No rule fires so 升级=否.
+    expect(result.pendingHooks).toContain("| H03 | 7 | 小承诺 | 未开启 | 0 | 15章 | 近期 | 无 | 第1卷末 | 否 |  | 否 | 对妹妹的承诺 |");
   });
 
   it("pending_hooks.md on disk carries the Phase 7 columns", async () => {

@@ -196,20 +196,22 @@ function buildDimensionNote(
       // and "受阻于 …" markers emitted by the stale/blocked detector; this
       // dimension tells the reviewer how to escalate them.
       return language === "en"
-        ? `Hook-debt escalation (Phase 7). Read the pending_hooks.md ledger and escalate based on the stale / blocked / core_hook / depends_on columns, NOT only on "undelivered hook present":
+        ? `Hook-debt escalation (Phase 7 + hotfixes 2/3). Read the pending_hooks.md ledger and escalate based on the stale / blocked / core_hook / depends_on / promoted columns, NOT only on "undelivered hook present":
 
-• A core_hook=true hook that has been stale for over 10 chapters → escalate from warning to critical. The book has only 3-7 core hooks; letting one drift that long is the lead symptom of narrative rot (cf. new.txt L1569).
-• A blocked hook (depends_on references upstream still unplanted or unresolved) that has been blocked for a run of 6+ chapters → warning. Call out the specific upstream hook id so the planner can route the resolution.
-• At volume end (final chapter of any volume per volume_map) a core_hook that is still open or stale without explicit "carried over to volume N+1" planning → critical.
-• A non-core stale hook → info-level log; do not fail the chapter on it, but note it so the planner can schedule cleanup.
+• Critical severity only applies to hooks with promoted=true in the ledger. A stale/blocked non-promoted hook stays at info — the promotion flag is the gate that keeps reviewer noise down, because architect-seed emits many non-load-bearing seeds.
+• A promoted core_hook=true hook that has been stale for over 10 chapters → escalate from warning to critical. The book has only 3-7 core hooks; letting one drift that long is the lead symptom of narrative rot (cf. new.txt L1569).
+• A promoted hook whose status cell contains "blocked on X (blocked Y chapters)" with Y >= 6 → warning. The literal "blocked Y chapters" token comes straight from the ledger — read it, don't guess. Call out the upstream hook id so the planner can route the resolution.
+• At volume end (final chapter of any volume per volume_map) a promoted core_hook that is still open or stale without explicit "carried over to volume N+1" planning → critical.
+• Any non-promoted stale hook → info-level log; do not fail the chapter on it, but note it so the planner can schedule cleanup.
 
 Quote the exact hook_id in description and include the stale / blocked marker text verbatim. Structure check only — do not judge hook prose quality.`
-        : `Phase 7 hook-debt 升级规则。阅读 pending_hooks.md 伏笔池时不要只看"有没有悬而未决的伏笔"，要读状态列中的 stale / blocked 标记、core_hook 列和 depends_on 列：
+        : `Phase 7 hook-debt 升级规则（含 hotfix 2/3）。阅读 pending_hooks.md 伏笔池时不要只看"有没有悬而未决的伏笔"，要读状态列中的 stale / blocked 标记、core_hook 列、depends_on 列、以及升级列：
 
-• 主线伏笔（core_hook=是）过期超过 10 章未回收 → warning 升级为 critical。全书只有 3-7 条核心伏笔，任何一条漂移这么久都是烂尾前兆（对应 new.txt L1569"严禁烂尾逻辑"）。
-• 受阻伏笔（depends_on 指向的上游仍未种下或未解决）已被阻塞超过 5 章 → warning。在描述中写出具体的上游 hook_id，让 planner 能安排落地路径。
-• 卷尾（volume_map 中任一卷的末章）仍有主线伏笔处于 open 或 stale 且没有显式"延至下一卷"规划 → critical。
-• 次要伏笔 stale → info 级记录，不判本章失败，但保留以便 planner 安排清理。
+• critical 级别仅适用于升级=是（promoted=true）的伏笔。非升级的 stale/blocked 伏笔一律保持 info——升级标志是降噪的开关，因为架构师阶段会产出大量非承重的伏笔种子。
+• 升级=是且 core_hook=是 的伏笔过期超过 10 章未回收 → warning 升级为 critical。全书只有 3-7 条核心伏笔，任何一条漂移这么久都是烂尾前兆（对应 new.txt L1569"严禁烂尾逻辑"）。
+• 升级=是的受阻伏笔，状态列中"受阻于 X (已阻 Y 章)"且 Y ≥ 6 → warning。"已阻 Y 章"这个字面 token 直接读自账本，不要猜。描述中要写出具体的上游 hook_id，让 planner 能安排落地路径。
+• 卷尾（volume_map 中任一卷的末章）仍有升级=是的主线伏笔处于 open 或 stale 且没有显式"延至下一卷"规划 → critical。
+• 升级=否的 stale 伏笔 → info 级记录，不判本章失败，但保留以便 planner 安排清理。
 
 description 中要明确引用 hook_id，并把状态列中 stale / blocked 的原文标记字面抄进去。本维度只审结构，不评价伏笔文笔。`;
     case 19:

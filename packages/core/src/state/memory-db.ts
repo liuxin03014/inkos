@@ -60,6 +60,10 @@ export interface StoredHook {
   readonly coreHook?: boolean;
   readonly halfLifeChapters?: number;
   readonly advancedCount?: number;
+  // Phase 7 hotfix 2 — whether the seed has been promoted into the live ledger
+  // (architect-time structural rules + consolidator-time advanced_count rule).
+  // Reviewer uses this to gate critical-severity escalation.
+  readonly promoted?: boolean;
 }
 
 export class MemoryDB {

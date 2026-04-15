@@ -44,12 +44,12 @@ export function renderHookSnapshot(
 
   const headers = language === "en"
     ? [
-      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | depends_on | pays_off_in_arc | core_hook | half_life | notes |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | depends_on | pays_off_in_arc | core_hook | half_life | promoted | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     : [
-      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 上游依赖 | 回收卷 | 核心 | 半衰期 | 备注 |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 上游依赖 | 回收卷 | 核心 | 半衰期 | 升级 | 备注 |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ];
 
   return [
@@ -66,6 +66,7 @@ export function renderHookSnapshot(
       hook.paysOffInArc ?? "",
       renderCoreHookCell(hook.coreHook === true, language),
       renderHalfLifeCell(hook.halfLifeChapters),
+      renderPromotedCell(hook.promoted, language),
       hook.notes,
     ].map((cell) => escapeTableCell(String(cell))).join(" | ")).map((row) => `| ${row} |`),
   ].join("\n");
@@ -74,6 +75,12 @@ export function renderHookSnapshot(
 function renderHalfLifeCell(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "";
   return String(Math.trunc(value));
+}
+
+function renderPromotedCell(value: boolean | undefined, language: "zh" | "en"): string {
+  if (value === undefined) return "";
+  if (language === "en") return value ? "true" : "false";
+  return value ? "是" : "否";
 }
 
 function renderDependsOnCell(ids: ReadonlyArray<string>, language: "zh" | "en"): string {
@@ -249,21 +256,25 @@ function parsePendingHookRow(row: ReadonlyArray<string | undefined>): StoredHook
   //   7 (legacy pre-timing): id, ch, type, status, last_adv, expected, notes
   //   8 (Phase 5/6):          id, ch, type, status, last_adv, expected, timing, notes
   //  11 (Phase 7 ledger):     ... + depends_on, pays_off_in_arc, core_hook, notes
-  //  12 (Phase 7 architect):  ... + depends_on, pays_off_in_arc, core_hook, half_life, notes
+  //  12 (Phase 7 hotfix 1):   ... + depends_on, pays_off_in_arc, core_hook, half_life, notes
+  //  13 (Phase 7 hotfix 2):   ... + depends_on, pays_off_in_arc, core_hook, half_life, promoted, notes
   //  additional trailing columns (e.g. stale/blocked diagnostic columns) are
   //  allowed — the parser skips past them to the notes column.
-  const phase7Full = row.length >= 12;
+  const phase7Promoted = row.length >= 13;
+  const phase7HalfLife = row.length === 12;
   const phase7Compact = row.length === 11;
-  const phase7 = phase7Full || phase7Compact;
+  const phase7 = phase7Promoted || phase7HalfLife || phase7Compact;
   const legacyShape = row.length < 8;
   const payoffTiming = legacyShape ? undefined : normalizeHookPayoffTiming(row[6]);
-  const notes = phase7Full
-    ? (row[11] ?? "")
-    : phase7Compact
-      ? (row[10] ?? "")
-      : legacyShape
-        ? (row[6] ?? "")
-        : (row[7] ?? "");
+  const notes = phase7Promoted
+    ? (row[12] ?? "")
+    : phase7HalfLife
+      ? (row[11] ?? "")
+      : phase7Compact
+        ? (row[10] ?? "")
+        : legacyShape
+          ? (row[6] ?? "")
+          : (row[7] ?? "");
 
   const base = {
     hookId: normalizeHookId(row[0]),
@@ -283,8 +294,18 @@ function parsePendingHookRow(row: ReadonlyArray<string | undefined>): StoredHook
     dependsOn: parseDependsOn(row[7] ?? ""),
     paysOffInArc: (row[8] ?? "").trim(),
     coreHook: parseBooleanCell(row[9]),
-    halfLifeChapters: phase7Full ? parseOptionalInt(row[10]) : undefined,
+    halfLifeChapters: (phase7HalfLife || phase7Promoted) ? parseOptionalInt(row[10]) : undefined,
+    promoted: phase7Promoted ? parseOptionalBooleanCell(row[11]) : undefined,
   };
+}
+
+function parseOptionalBooleanCell(cell: string | undefined): boolean | undefined {
+  const normalized = (cell ?? "").trim();
+  if (!normalized) return undefined;
+  const lower = normalized.toLowerCase();
+  if (/^(true|yes|y|是|核心|core|1|✓|✔|promoted|已升级)$/.test(lower)) return true;
+  if (/^(false|no|n|否|未升级|seed|0|✗|✘)$/.test(lower)) return false;
+  return undefined;
 }
 
 function parseDependsOn(cell: string): ReadonlyArray<string> {

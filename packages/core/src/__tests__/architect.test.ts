@@ -339,9 +339,11 @@ describe("ArchitectAgent", () => {
 
     const result = await agent.generateFoundation(book);
 
-    // Phase 7 + hotfix 1: ledger renders extended columns — depends_on,
-    // pays_off_in_arc, core_hook, half_life (empty when not specified).
-    expect(result.pendingHooks).toContain("| H01 | 1 | 主线 | 未开启 | 0 | 10章 | 中程 | 无 |  | 否 |  | 主线核心钩子 |");
+    // Phase 7 + hotfixes 1/2: ledger renders extended columns — depends_on,
+    // pays_off_in_arc, core_hook, half_life (empty when not specified), and
+    // promoted (computed at architect time). This hook has no promotion rule
+    // firing (core=否, no depends_on, in-volume payoff) so 升级=否.
+    expect(result.pendingHooks).toContain("| H01 | 1 | 主线 | 未开启 | 0 | 10章 | 中程 | 无 |  | 否 |  | 否 | 主线核心钩子 |");
     expect(result.pendingHooks).not.toContain("如果你愿意");
     expect(result.pendingHooks).not.toContain("前10章逐章细纲");
   });
@@ -403,7 +405,7 @@ describe("ArchitectAgent", () => {
 
     const result = await agent.generateFoundation(book);
 
-    expect(result.pendingHooks).toContain("| H13 | 22 | 舆情操盘 | 待推进 | 0 | 51-60章 | 中程 | 无 |  | 否 |  | 庄蔓出场后逐步揭露（初始线索：一家自媒体公司在多个旧案节点同步接单） |");
+    expect(result.pendingHooks).toContain("| H13 | 22 | 舆情操盘 | 待推进 | 0 | 51-60章 | 中程 | 无 |  | 否 |  | 否 | 庄蔓出场后逐步揭露（初始线索：一家自媒体公司在多个旧案节点同步接单） |");
   });
 
   it("accepts section labels with spacing and punctuation drift from non-strict models", async () => {
@@ -467,7 +469,7 @@ describe("ArchitectAgent", () => {
     expect(result.volumeOutline).toBe("# 卷纲");
     expect(result.bookRules).toContain("version: \"1.0\"");
     expect(result.currentState).toBe("# 当前状态");
-    expect(result.pendingHooks).toContain("| H01 | 1 | mystery | open | 0 | 10章 | 中程 | 无 |  | 否 |  | 初始钩子 |");
+    expect(result.pendingHooks).toContain("| H01 | 1 | mystery | open | 0 | 10章 | 中程 | 无 |  | 否 |  | 否 | 初始钩子 |");
   });
 
   it("throws when a required foundation section is missing", async () => {

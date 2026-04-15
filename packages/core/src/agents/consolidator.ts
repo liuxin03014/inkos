@@ -2,11 +2,22 @@ import { BaseAgent } from "./base.js";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readVolumeMap } from "../utils/outline-paths.js";
+import {
+  parsePendingHooksMarkdown,
+  renderHookSnapshot,
+} from "../utils/story-markdown.js";
+import type { StoredHook } from "../state/memory-db.js";
 
 export interface ConsolidationResult {
   readonly volumeSummaries: string;
   readonly archivedVolumes: number;
   readonly retainedChapters: number;
+  /**
+   * Phase 7 hotfix 2: number of ledger hooks whose `promoted` flag flipped
+   * from false to true during this consolidation run (advanced_count rule).
+   * 0 when pending_hooks.md is absent or no hook crossed the threshold.
+   */
+  readonly promotedHookCount: number;
 }
 
 /**
@@ -35,20 +46,26 @@ export class ConsolidatorAgent extends BaseAgent {
       readVolumeMap(bookDir, ""),
     ]);
 
+    // Phase 7 hotfix 2: pre-archive re-promotion pass. Runs independently of
+    // summary consolidation so a new book (no completed volumes yet) still
+    // flips the `promoted` flag whenever a seed's advanced_count crosses the
+    // threshold.
+    const promotedHookCount = await this.rerunAdvancedCountPromotion(storyDir);
+
     if (!summariesRaw || !outlineRaw) {
-      return { volumeSummaries: "", archivedVolumes: 0, retainedChapters: 0 };
+      return { volumeSummaries: "", archivedVolumes: 0, retainedChapters: 0, promotedHookCount };
     }
 
     // Parse volume boundaries from outline
     const volumeBoundaries = this.parseVolumeBoundaries(outlineRaw);
     if (volumeBoundaries.length === 0) {
-      return { volumeSummaries: "", archivedVolumes: 0, retainedChapters: 0 };
+      return { volumeSummaries: "", archivedVolumes: 0, retainedChapters: 0, promotedHookCount };
     }
 
     // Parse chapter summaries into rows
     const { header, rows } = this.parseSummaryTable(summariesRaw);
     if (rows.length === 0) {
-      return { volumeSummaries: "", archivedVolumes: 0, retainedChapters: 0 };
+      return { volumeSummaries: "", archivedVolumes: 0, retainedChapters: 0, promotedHookCount };
     }
 
     const maxChapter = Math.max(...rows.map((r) => r.chapter));
@@ -78,7 +95,12 @@ export class ConsolidatorAgent extends BaseAgent {
     }
 
     if (completedVolumes.length === 0) {
-      return { volumeSummaries: "", archivedVolumes: 0, retainedChapters: currentVolumeRows.length };
+      return {
+        volumeSummaries: "",
+        archivedVolumes: 0,
+        retainedChapters: currentVolumeRows.length,
+        promotedHookCount,
+      };
     }
 
     // LLM consolidation for each completed volume
@@ -123,7 +145,48 @@ export class ConsolidatorAgent extends BaseAgent {
       volumeSummaries: newSummaries.join("\n"),
       archivedVolumes: completedVolumes.length,
       retainedChapters: currentVolumeRows.length,
+      promotedHookCount,
     };
+  }
+
+  /**
+   * Phase 7 hotfix 2 — re-run promotion for seeds whose advancedCount has
+   * crossed the 2-chapter threshold since architect seed time. Structural
+   * rules (core_hook / depends_on / cross_volume) are already applied at
+   * architect time and stay sticky (once promoted, always promoted).
+   *
+   * Returns the number of hooks that flipped from promoted=false (or
+   * undefined) to promoted=true this run.
+   */
+  private async rerunAdvancedCountPromotion(storyDir: string): Promise<number> {
+    const ledgerPath = join(storyDir, "pending_hooks.md");
+    const raw = await readFile(ledgerPath, "utf-8").catch(() => "");
+    if (!raw.trim()) return 0;
+
+    const hooks = parsePendingHooksMarkdown(raw);
+    if (hooks.length === 0) return 0;
+
+    const language: "zh" | "en" = /[\u4e00-\u9fff]/.test(raw) ? "zh" : "en";
+
+    let flipped = 0;
+    const nextHooks: StoredHook[] = hooks.map((hook) => {
+      if (hook.promoted === true) return hook;
+      const advanced = hook.advancedCount ?? 0;
+      if (advanced >= 2) {
+        flipped += 1;
+        return { ...hook, promoted: true };
+      }
+      // Preserve existing `promoted` (possibly undefined for legacy
+      // 11/12-column ledgers) when the threshold is not met. We deliberately
+      // do NOT override architect-set promoted=false here — the structural
+      // rules ran at architect time; rewriting them would fight that.
+      return hook;
+    });
+
+    if (flipped === 0) return 0;
+
+    await writeFile(ledgerPath, renderHookSnapshot(nextHooks, language), "utf-8");
+    return flipped;
   }
 
   private parseVolumeBoundaries(outline: string): Array<{ name: string; startCh: number; endCh: number }> {

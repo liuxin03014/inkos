@@ -42,6 +42,10 @@ export const HookRecordSchema = z.object({
   coreHook: z.boolean().optional(),
   halfLifeChapters: z.number().int().positive().optional(),
   advancedCount: z.number().int().min(0).optional(),
+  // Phase 7 hotfix 2 — promotion flag. Undefined on legacy 11/12-column
+  // ledgers; architect-seed and consolidator-rerun both populate it going
+  // forward. Reviewer uses it to gate critical severity for stale hooks.
+  promoted: z.boolean().optional(),
 });
 
 export type HookRecord = z.infer<typeof HookRecordSchema>;

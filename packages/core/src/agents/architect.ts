@@ -5,6 +5,12 @@ import { readGenreProfile } from "./rules-reader.js";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { renderHookSnapshot } from "../utils/memory-retrieval.js";
+import {
+  shouldPromoteHook,
+  type PromotionContext,
+  type VolumeBoundary,
+} from "../utils/hook-promotion.js";
+import type { StoredHook } from "../state/memory-db.js";
 
 // ---------------------------------------------------------------------------
 // Phase 5 (v13) — Static 骨架 layer collapse
@@ -576,6 +582,7 @@ Rules:
     const roles = this.parseRoles(rolesRaw);
     const pendingHooks = this.normalizePendingHooksSection(
       this.stripTrailingAssistantCoda(pendingHooksRaw),
+      effectiveVolumeMap,
     );
 
     // Synthesize legacy-facing content from new prose (so back-compat callers
@@ -964,7 +971,7 @@ ${trimmed}\n`;
     return lines.slice(0, cutoff).join("\n").trimEnd();
   }
 
-  private normalizePendingHooksSection(section: string): string {
+  private normalizePendingHooksSection(section: string, volumeMapRaw: string): string {
     const rows = section
       .split("\n")
       .map((line) => line.trim())
@@ -1014,10 +1021,61 @@ ${trimmed}\n`;
         if (halfLife !== undefined) base.halfLifeChapters = halfLife;
       }
 
-      return base as unknown as Parameters<typeof renderHookSnapshot>[0][number];
+      return base as unknown as StoredHook;
     });
 
-    return renderHookSnapshot(normalizedHooks, language);
+    // Phase 7 hotfix 2: pre-promote seeds based on the three structural rules
+    // that don't need runtime advanced_count (core_hook / depends_on /
+    // cross_volume). advanced_count-based promotion is applied later by the
+    // consolidator at volume boundaries.
+    const volumeBoundaries = this.parseVolumeBoundariesForPromotion(volumeMapRaw);
+    const allSeedStartChapters = new Map<string, number>(
+      normalizedHooks.map((hook) => [hook.hookId, hook.startChapter]),
+    );
+    const promotionContext: PromotionContext = {
+      volumeBoundaries,
+      currentChapter: 0,
+      advancedCounts: new Map(),
+      allSeedStartChapters,
+    };
+    const promotedHooks = normalizedHooks.map((hook) => {
+      const decision = shouldPromoteHook(hook, promotionContext);
+      return { ...hook, promoted: decision.promote };
+    });
+
+    return renderHookSnapshot(
+      promotedHooks as unknown as Parameters<typeof renderHookSnapshot>[0],
+      language,
+    );
+  }
+
+  /**
+   * Parse `第N卷 (A-B章)` / `Volume N (chapters A-B)` headers from the
+   * architect's volume_map prose. Best-effort: missing / unparseable blocks
+   * return an empty list and cross-volume promotion simply never fires.
+   */
+  private parseVolumeBoundariesForPromotion(raw: string): ReadonlyArray<VolumeBoundary> {
+    if (!raw) return [];
+    const lines = raw.split("\n");
+    const volumeHeader = /^(第[一二三四五六七八九十百千万零〇\d]+卷|Volume\s+\d+)/i;
+    const rangePattern = /[（(]\s*(?:第|[Cc]hapters?\s+)?(\d+)\s*[-–~～—]\s*(\d+)\s*(?:章)?\s*[）)]|(?:第|[Cc]hapters?\s+)(\d+)\s*[-–~～—]\s*(\d+)\s*(?:章)?/i;
+
+    const volumes: VolumeBoundary[] = [];
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/^#+\s*/, "").trim();
+      if (!volumeHeader.test(line)) continue;
+      const rangeMatch = line.match(rangePattern);
+      if (!rangeMatch) continue;
+      const startCh = parseInt(rangeMatch[1] ?? rangeMatch[3] ?? "0", 10);
+      const endCh = parseInt(rangeMatch[2] ?? rangeMatch[4] ?? "0", 10);
+      if (startCh <= 0 || endCh <= 0) continue;
+      const rangeIndex = rangeMatch.index ?? line.length;
+      const name = line.slice(0, rangeIndex).replace(/[（(]\s*$/, "").trim();
+      if (name.length > 0) {
+        volumes.push({ name, startCh, endCh });
+      }
+    }
+    return volumes;
   }
 
   private parseHookChapterNumber(value: string | undefined): number {
