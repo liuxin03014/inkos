@@ -89,8 +89,9 @@ export class PlannerAgent extends BaseAgent {
       input.chapterNumber,
     );
     const parsedRules = parseBookRules(seedMaterials.bookRulesRaw);
+    const prohibitions = parsedRules?.rules.prohibitions ?? [];
     const mustKeep = this.collectMustKeep(seedMaterials.currentState, seedMaterials.storyBible);
-    const mustAvoid = this.collectMustAvoid(seedMaterials.currentFocus, parsedRules.rules.prohibitions);
+    const mustAvoid = this.collectMustAvoid(seedMaterials.currentFocus, prohibitions);
     const styleEmphasis = this.collectStyleEmphasis(seedMaterials.authorIntent, seedMaterials.currentFocus);
     const materials = await gatherPlanningMaterials({
       bookDir: input.bookDir,

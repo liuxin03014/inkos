@@ -126,7 +126,20 @@ export async function readBookRules(bookDir: string): Promise<ParsedBookRules | 
   const legacyRaw = await tryReadFile(join(bookDir, "story/book_rules.md"));
   if (!legacyRaw) return null;
   // Legacy file: body intentionally preserved (narrow narrative rules).
-  return parseBookRules(legacyRaw);
+  //
+  // Phase hotfix 1: parseBookRules now returns null if the file is a Phase 5
+  // compat shim (no YAML, only the architect-emitted pointer prose). In that
+  // case we surface a warning so callers don't silently fall back to default
+  // empty rules — the common new-book path where story_frame.md frontmatter
+  // is broken AND no legacy rules ever existed.
+  const parsed = parseBookRules(legacyRaw);
+  if (parsed === null) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[rules-reader] book_rules.md at ${bookDir}/story/book_rules.md is a Phase 5 compat shim with no authoritative rules — returning null instead of silently zeroing out rules. Fix the YAML frontmatter on outline/story_frame.md.`,
+    );
+  }
+  return parsed;
 }
 
 export async function readBookLanguage(bookDir: string): Promise<"zh" | "en" | undefined> {
