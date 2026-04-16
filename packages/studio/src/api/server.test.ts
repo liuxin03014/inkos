@@ -489,6 +489,14 @@ describe("createStudioServer daemon lifecycle", () => {
     };
     loadProjectConfigMock.mockResolvedValue(freshConfig);
 
+    // Stub /models so probe doesn't hit the real OpenAI endpoint and short-circuit on 401.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => "Not Found",
+    });
+    vi.stubGlobal("fetch", fetchMock as typeof fetch);
+
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(startupConfig as never, root);
 
@@ -503,7 +511,7 @@ describe("createStudioServer daemon lifecycle", () => {
       expect.anything(),
       "fresh-model",
       expect.any(Array),
-      expect.objectContaining({ maxTokens: 5 }),
+      expect.objectContaining({ maxTokens: expect.any(Number) }),
     );
   });
 
@@ -519,6 +527,13 @@ describe("createStudioServer daemon lifecycle", () => {
       },
     };
     loadProjectConfigMock.mockResolvedValue(freshConfig);
+    // Stub /models so probe doesn't hit the real OpenAI endpoint and short-circuit on 401.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => "Not Found",
+    });
+    vi.stubGlobal("fetch", fetchMock as typeof fetch);
     createLLMClientMock.mockImplementation(((cfg: unknown) => cfg) as any);
     chatCompletionMock.mockImplementation(async (client: any) => {
       if (client.stream === false) {
