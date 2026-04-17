@@ -8,7 +8,6 @@ import {
   createPatchChapterTextTool,
   createRenameEntityTool,
   createSubAgentTool,
-  createReviseChapterTool,
   createReadTool,
   createEditTool,
   createWriteFileTool,
@@ -237,7 +236,6 @@ export async function runAgentSession(
         tools: [
           createSubAgentTool(pipeline, bookId, projectRoot),
           createReadTool(projectRoot),
-          createReviseChapterTool(pipeline, bookId),
           createWriteTruthFileTool(pipeline, projectRoot, bookId),
           createRenameEntityTool(pipeline, projectRoot, bookId),
           createPatchChapterTextTool(pipeline, projectRoot, bookId),

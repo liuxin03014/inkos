@@ -7,7 +7,6 @@ import {
   createSubAgentTool,
   createPatchChapterTextTool,
   createRenameEntityTool,
-  createReviseChapterTool,
   createWriteFileTool,
   createWriteTruthFileTool,
 } from "../agent/agent-tools.js";
@@ -63,27 +62,6 @@ describe("agent deterministic writing tools", () => {
     expect(result.content[0]?.type).toBe("text");
     await expect(readFile(join(state.bookDir("harbor"), "story", "story_bible.md"), "utf-8"))
       .resolves.toContain("distrusts the guild");
-  });
-
-  it("routes chapter rewrite requests through reviseDraft with the requested mode", async () => {
-    const pipeline = {
-      reviseDraft: vi.fn(async () => ({
-        chapterNumber: 3,
-        wordCount: 1300,
-        fixedIssues: [],
-        applied: true,
-        status: "ready-for-review" as const,
-      })),
-    };
-    const tool = createReviseChapterTool(pipeline as never, "harbor");
-
-    const result = await tool.execute("tool-2", {
-      chapterNumber: 3,
-      mode: "rewrite",
-    });
-
-    expect(pipeline.reviseDraft).toHaveBeenCalledWith("harbor", 3, "rewrite");
-    expect(result.content[0]?.type).toBe("text");
   });
 
   it("renames entities through the deterministic edit controller", async () => {

@@ -1,7 +1,7 @@
 import { Type, type Static } from "@mariozechner/pi-ai";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@mariozechner/pi-agent-core";
 import type { PipelineRunner } from "../pipeline/runner.js";
-import { DEFAULT_REVISE_MODE, type ReviseMode } from "../agents/reviser.js";
+import { type ReviseMode } from "../agents/reviser.js";
 import { readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { join, normalize, resolve } from "node:path";
 import { StateManager } from "../state/manager.js";
@@ -226,36 +226,6 @@ export function createSubAgentTool(
 // 2. Deterministic writing tools
 // ---------------------------------------------------------------------------
 
-const ReviseChapterParams = Type.Object({
-  bookId: Type.Optional(Type.String({ description: "Book ID. Omit to use the active book." })),
-  chapterNumber: Type.Number({ description: "Chapter number to revise." }),
-  mode: Type.Optional(Type.Union([
-    Type.Literal("spot-fix"),
-    Type.Literal("polish"),
-    Type.Literal("rewrite"),
-    Type.Literal("rework"),
-    Type.Literal("anti-detect"),
-  ])),
-});
-
-export function createReviseChapterTool(
-  pipeline: PipelineRunner,
-  activeBookId: string | null,
-): AgentTool<typeof ReviseChapterParams> {
-  return {
-    name: "revise_chapter",
-    description: "Revise a specific chapter through the deterministic revision pipeline.",
-    label: "Revise Chapter",
-    parameters: ReviseChapterParams,
-    async execute(_toolCallId, params): Promise<AgentToolResult<undefined>> {
-      const bookId = resolveToolBookId("revise_chapter", params.bookId, activeBookId);
-      const mode = params.mode ?? DEFAULT_REVISE_MODE;
-      await pipeline.reviseDraft(bookId, params.chapterNumber, mode);
-      return textResult(`Revision (${mode}) complete for "${bookId}" chapter ${params.chapterNumber}.`);
-    },
-  };
-}
-
 const WriteTruthFileParams = Type.Object({
   bookId: Type.Optional(Type.String({ description: "Book ID. Omit to use the active book." })),
   fileName: Type.String({ description: "Truth file name under story/, e.g. story_bible.md or current_focus.md." }),
@@ -395,7 +365,8 @@ export function createEditTool(projectRoot: string): AgentTool<typeof EditParams
     description:
       "Edit a file under books/ via exact string replacement. " +
       "old_string must appear exactly once in the file. " +
-      "For chapter text use patch_chapter_text; for canonical truth files (story_bible/volume_outline/book_rules/current_focus) prefer write_truth_file.",
+      "For chapter text use patch_chapter_text; for canonical truth files (story_bible/volume_outline/book_rules/current_focus) prefer write_truth_file; " +
+      "to rewrite or polish a whole chapter call sub_agent with agent=\"reviser\".",
     label: "Edit File",
     parameters: EditParams,
     async execute(
@@ -439,7 +410,8 @@ export function createWriteFileTool(projectRoot: string): AgentTool<typeof Write
     description:
       "Create a new file, or fully replace an existing file's content under books/. " +
       "Parent directories are created automatically. Existing content is overwritten silently — " +
-      "for canonical truth files prefer write_truth_file; for chapter revisions use revise_chapter.",
+      "for canonical truth files prefer write_truth_file; " +
+      "for whole-chapter rewrites/polishing call sub_agent with agent=\"reviser\".",
     label: "Write File",
     parameters: WriteFileParams,
     async execute(
