@@ -75,7 +75,20 @@ describe("parseHookLedger", () => {
 
   it("returns empty lists when no ledger section is present", () => {
     const ledger = parseHookLedger("## 当前任务\n正文\n\n## 不要做\n- 无");
-    expect(ledger).toEqual({ open: [], advance: [], resolve: [], defer: [] });
+    expect(ledger).toEqual({ open: [], advance: [], resolve: [], defer: [], newOpenCount: 0 });
+  });
+
+  it("counts [new] placeholder lines under open as new hooks opened", () => {
+    const memo = `## 本章 hook 账
+open:
+- [new] 下一卷伏笔 || 理由
+- [new] 第二条埋点 || 理由
+advance:
+- H001 "x" → y
+`;
+    const ledger = parseHookLedger(memo);
+    expect(ledger.open).toEqual([]); // [new] lines have no id → not in .open
+    expect(ledger.newOpenCount).toBe(2);
   });
 
   it("stops at the next H2 heading and does not pollute across sections", () => {
@@ -170,8 +183,37 @@ advance:
     expect(violations).toEqual([]);
   });
 
+  it("flags 揭 1 埋 1 violation when a chapter resolves hooks without opening any", () => {
+    const memo = `## 本章 hook 账
+advance:
+- H007 "胖虎借条" → planted
+resolve:
+- H003 "杂役腰牌" → 林秋主动摘下
+`;
+    const draft = "林秋翻看胖虎借条，随后摘下杂役腰牌。";
+    const violations = validateHookLedger(memo, draft);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]!.category).toContain("揭 1 埋 1");
+  });
+
+  it("accepts 揭 1 埋 1 floor when a [new] line balances the resolved hook", () => {
+    const memo = `## 本章 hook 账
+open:
+- [new] 母亲留下的半枚玉佩 || 理由：下一卷线索
+advance:
+- H007 "胖虎借条" → planted
+resolve:
+- H003 "杂役腰牌" → 林秋主动摘下
+`;
+    const draft = "林秋翻看胖虎借条，随后摘下杂役腰牌。";
+    const violations = validateHookLedger(memo, draft);
+    expect(violations).toEqual([]);
+  });
+
   it("does not let placeholder 无 raise a false critical", () => {
     const memo = `## 本章 hook 账
+open:
+- [new] 下一卷伏笔 || 理由
 advance:
 - 无
 resolve:

@@ -34,6 +34,14 @@ export interface HookLedger {
   readonly advance: ReadonlyArray<HookLedgerEntry>;
   readonly resolve: ReadonlyArray<HookLedgerEntry>;
   readonly defer: ReadonlyArray<HookLedgerEntry>;
+  /**
+   * Count of `[new] ...` placeholder lines in the `open:` subsection. These
+   * are brand-new hooks declared by the planner that have no pre-existing
+   * hook_id (extractLedgerEntry rejects them because they carry no id to
+   * match downstream), but they still count as "a new hook opened" for the
+   * 揭 1 埋 1 floor check.
+   */
+  readonly newOpenCount: number;
 }
 
 const LEDGER_HEADING_PATTERNS = [
@@ -56,35 +64,45 @@ const SUBSECTION_WORDS = /^(open|advance|resolve|defer|new)$/i;
 export function parseHookLedger(memoBody: string): HookLedger {
   const section = extractLedgerSection(memoBody);
   if (!section) {
-    return { open: [], advance: [], resolve: [], defer: [] };
+    return { open: [], advance: [], resolve: [], defer: [], newOpenCount: 0 };
   }
 
-  const result: Record<keyof HookLedger, HookLedgerEntry[]> = {
+  const result: Record<"open" | "advance" | "resolve" | "defer", HookLedgerEntry[]> = {
     open: [],
     advance: [],
     resolve: [],
     defer: [],
   };
+  let newOpenCount = 0;
 
-  let current: keyof HookLedger | null = null;
+  let current: "open" | "advance" | "resolve" | "defer" | null = null;
   for (const rawLine of section.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line.length === 0) continue;
 
     const subHeadingMatch = line.match(/^(open|advance|resolve|defer)\s*[:：]?\s*$/i);
     if (subHeadingMatch) {
-      current = subHeadingMatch[1]!.toLowerCase() as keyof HookLedger;
+      current = subHeadingMatch[1]!.toLowerCase() as typeof current;
       continue;
     }
 
     if (!current) continue;
     if (!line.startsWith("-")) continue;
 
+    // `[new]` placeholder lines have no hook_id but still count as a new hook
+    // opened (揭 1 埋 1 floor check). extractLedgerEntry filters them out for
+    // advance/resolve evidence matching; we tally them separately here.
+    const cleaned = line.replace(/^-+\s*/, "").trim();
+    if (current === "open" && /^\[new\]/i.test(cleaned)) {
+      newOpenCount += 1;
+      continue;
+    }
+
     const entry = extractLedgerEntry(line);
     if (entry) result[current].push(entry);
   }
 
-  return result;
+  return { ...result, newOpenCount };
 }
 
 /**
@@ -92,16 +110,24 @@ export function parseHookLedger(memoBody: string): HookLedger {
  * evidence in the draft text. We do NOT validate `open` (new hooks don't have
  * a pre-existing id/descriptor to echo) or `defer` (deferred = deliberately
  * not touched).
+ *
+ * Additionally enforces the "揭 1 埋 1" hard floor (Xu Er Jia De Mao, 番茄文章
+ * 10): whenever a chapter resolves one or more hooks, it must open at least
+ * as many new hooks in the same memo. "Resolve without opening" leaves the
+ * reader feeling "解完即索然无味" — the story loses forward pull. The softer
+ * "揭 1 埋 2" rule is a planner-prompt recommendation, not a hard gate here,
+ * because enforcing ×2 would conflict with the "≤ 2 new hooks per chapter"
+ * cap on the planner side when resolve=2.
  */
 export function validateHookLedger(
   memoBody: string,
   draftContent: string,
 ): ReadonlyArray<HookLedgerViolation> {
   const ledger = parseHookLedger(memoBody);
-  const committed = dedupeById([...ledger.advance, ...ledger.resolve]);
-  if (committed.length === 0) return [];
-
   const violations: HookLedgerViolation[] = [];
+
+  // Evidence check for everything the memo committed to land in prose.
+  const committed = dedupeById([...ledger.advance, ...ledger.resolve]);
   for (const entry of committed) {
     if (!draftEchoesEntry(draftContent, entry)) {
       violations.push({
@@ -112,6 +138,23 @@ export function validateHookLedger(
       });
     }
   }
+
+  // "揭 1 埋 1" hard floor: when anything was resolved, at least the same
+  // number of new hooks must have been opened. We count both `[new]`
+  // placeholder lines (newOpenCount — the normal way planners declare fresh
+  // hooks without an id) and any id-bearing lines under `open:` (rare, but
+  // legal if a planner re-opens a previously paused hook).
+  const resolvedCount = ledger.resolve.length;
+  const openedCount = ledger.open.length + ledger.newOpenCount;
+  if (resolvedCount > 0 && openedCount < resolvedCount) {
+    violations.push({
+      severity: "critical",
+      category: "hook 账揭 1 埋 1 违规",
+      description: `本章 resolve 了 ${resolvedCount} 个钩子，但 open 只有 ${openedCount} 个新钩子。只揭不埋会让读者豁然开朗后索然无味，本书的前进拉力被削弱。`,
+      suggestion: `在 memo 的 open 段下至少再埋 ${resolvedCount - openedCount} 个与本章已揭钩子相关的新钩子（番茄老师徐二家的猫："掀开一个伏笔的同时，再埋两个伏笔"）。新钩子最好与已揭钩子彼此关联，不要凭空冒出来。`,
+    });
+  }
+
   return violations;
 }
 
