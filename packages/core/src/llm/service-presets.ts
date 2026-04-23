@@ -1,9 +1,11 @@
+import { getProvider } from "./providers/index.js";
+
 export interface ServicePreset {
   readonly providerFamily: "openai" | "anthropic";
   readonly api: string;
   readonly baseUrl: string;
   readonly label: string;
-  readonly temperatureRange?: [number, number];
+  readonly temperatureRange?: readonly [number, number];
   readonly defaultTemperature?: number;
   readonly writingTemperature?: number;
   readonly temperatureHint?: string;
@@ -48,7 +50,35 @@ export const SERVICE_PRESETS: Record<string, ServicePreset> = {
 };
 
 export function resolveServicePreset(service: string): ServicePreset | undefined {
-  return SERVICE_PRESETS[service];
+  const provider = getProvider(service);
+  const legacy = SERVICE_PRESETS[service];
+  if (!provider && !legacy) return undefined;
+
+  return {
+    providerFamily: legacy?.providerFamily ?? (provider?.api.startsWith("anthropic") ? "anthropic" : "openai"),
+    api: (provider?.api ?? legacy?.api ?? "openai-completions") as ServicePreset["api"],
+    baseUrl: provider?.baseUrl ?? legacy?.baseUrl ?? "",
+    label: provider?.label ?? legacy?.label ?? service,
+    ...(provider?.temperatureRange ?? legacy?.temperatureRange
+      ? { temperatureRange: provider?.temperatureRange ?? legacy?.temperatureRange }
+      : {}),
+    ...(provider?.defaultTemperature !== undefined || legacy?.defaultTemperature !== undefined
+      ? { defaultTemperature: provider?.defaultTemperature ?? legacy?.defaultTemperature }
+      : {}),
+    ...(provider?.writingTemperature !== undefined || legacy?.writingTemperature !== undefined
+      ? { writingTemperature: provider?.writingTemperature ?? legacy?.writingTemperature }
+      : {}),
+    ...(provider?.temperatureHint ?? legacy?.temperatureHint
+      ? { temperatureHint: provider?.temperatureHint ?? legacy?.temperatureHint }
+      : {}),
+    ...(legacy?.knownModels ? { knownModels: legacy.knownModels } : {}),
+    ...(provider?.piProvider ?? legacy?.piProvider
+      ? { piProvider: provider?.piProvider ?? legacy?.piProvider }
+      : {}),
+    ...(provider?.modelsBaseUrl ?? legacy?.modelsBaseUrl
+      ? { modelsBaseUrl: provider?.modelsBaseUrl ?? legacy?.modelsBaseUrl }
+      : {}),
+  };
 }
 
 export function resolveServiceProviderFamily(service: string): "openai" | "anthropic" | undefined {

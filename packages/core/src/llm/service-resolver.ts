@@ -7,7 +7,7 @@ export interface ResolvedModel {
   model: Model<Api>;
   apiKey: string;
   writingTemperature?: number;
-  temperatureRange?: [number, number];
+  temperatureRange?: readonly [number, number];
   temperatureHint?: string;
 }
 
