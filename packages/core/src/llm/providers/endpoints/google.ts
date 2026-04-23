@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const GOOGLE: InkosProvider = {
+export const GOOGLE: InkosEndpoint = {
   id: "google",
   label: "Google Gemini",
   api: "openai-completions",

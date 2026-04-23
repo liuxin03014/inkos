@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const MINIMAX: InkosProvider = {
+export const MINIMAX: InkosEndpoint = {
   id: "minimax",
   label: "MiniMax",
   api: "anthropic-messages",

@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const ZHIPU: InkosProvider = {
+export const ZHIPU: InkosEndpoint = {
   id: "zhipu",
   label: "智谱 GLM",
   api: "openai-completions",

@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const MODELSCOPE: InkosProvider = {
+export const MODELSCOPE: InkosEndpoint = {
   id: "modelscope",
   label: "魔搭社区 ModelScope",
   api: "openai-completions",

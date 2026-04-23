@@ -1,4 +1,4 @@
-import { getProvider } from "./providers/index.js";
+import { getEndpoint } from "./providers/index.js";
 
 export interface ServicePreset {
   readonly providerFamily: "openai" | "anthropic";
@@ -50,7 +50,7 @@ export const SERVICE_PRESETS: Record<string, ServicePreset> = {
 };
 
 export function resolveServicePreset(service: string): ServicePreset | undefined {
-  const provider = getProvider(service);
+  const provider = getEndpoint(service);
   const legacy = SERVICE_PRESETS[service];
   if (!provider && !legacy) return undefined;
 
@@ -170,7 +170,7 @@ export async function listModelsForService(
   apiKey?: string,
   liveBaseUrl?: string,
 ): Promise<ReadonlyArray<ModelInfo>> {
-  const provider = getProvider(service);
+  const provider = getEndpoint(service);
   const preset = SERVICE_PRESETS[service];
   if (!provider && !preset) return [];
 

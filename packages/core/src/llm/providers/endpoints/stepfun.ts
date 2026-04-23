@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const STEPFUN: InkosProvider = {
+export const STEPFUN: InkosEndpoint = {
   id: "stepfun",
   label: "阶跃星辰",
   api: "openai-completions",

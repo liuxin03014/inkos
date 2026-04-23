@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const GITHUB_COPILOT: InkosProvider = {
+export const GITHUB_COPILOT: InkosEndpoint = {
   id: "githubCopilot",
   label: "GitHub Copilot",
   api: "openai-responses",

@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const SILICONCLOUD: InkosProvider = {
+export const SILICONCLOUD: InkosEndpoint = {
   id: "siliconcloud",
   label: "硅基流动",
   api: "openai-completions",

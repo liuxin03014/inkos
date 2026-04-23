@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const INFINIAI: InkosProvider = {
+export const INFINIAI: InkosEndpoint = {
   id: "infiniai",
   label: "无问芯穹 InfiniAI",
   api: "openai-completions",

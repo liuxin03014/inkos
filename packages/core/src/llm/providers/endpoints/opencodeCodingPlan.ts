@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const OPENCODE_CODING_PLAN: InkosProvider = {
+export const OPENCODE_CODING_PLAN: InkosEndpoint = {
   id: "opencodeCodingPlan",
   label: "OpenCode Coding Plan",
   api: "anthropic-messages",

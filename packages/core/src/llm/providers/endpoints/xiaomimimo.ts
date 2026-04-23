@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const XIAOMI_MIMO: InkosProvider = {
+export const XIAOMI_MIMO: InkosEndpoint = {
   id: "xiaomimimo",
   label: "小米 MiMo",
   api: "openai-completions",

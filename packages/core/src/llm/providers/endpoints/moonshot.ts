@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const MOONSHOT: InkosProvider = {
+export const MOONSHOT: InkosEndpoint = {
   id: "moonshot",
   label: "Moonshot (Kimi)",
   api: "openai-completions",

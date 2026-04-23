@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const ANTHROPIC: InkosProvider = {
+export const ANTHROPIC: InkosEndpoint = {
   id: "anthropic",
   label: "Anthropic",
   api: "anthropic-messages",

@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const KIMI_CODING_PLAN: InkosProvider = {
+export const KIMI_CODING_PLAN: InkosEndpoint = {
   id: "kimiCodingPlan",
   label: "Kimi Coding Plan",
   api: "anthropic-messages",

@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const WENXIN: InkosProvider = {
+export const WENXIN: InkosEndpoint = {
   id: "wenxin",
   label: "文心一言 (千帆)",
   api: "openai-completions",

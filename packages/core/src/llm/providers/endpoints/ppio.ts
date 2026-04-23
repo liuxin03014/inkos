@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const PPIO: InkosProvider = {
+export const PPIO: InkosEndpoint = {
   id: "ppio",
   label: "PPIO",
   api: "openai-completions",

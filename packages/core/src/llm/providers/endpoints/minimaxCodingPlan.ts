@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const MINIMAX_CODING_PLAN: InkosProvider = {
+export const MINIMAX_CODING_PLAN: InkosEndpoint = {
   id: "minimaxCodingPlan",
   label: "MiniMax Coding Plan",
   api: "anthropic-messages",

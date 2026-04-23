@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const AI360: InkosProvider = {
+export const AI360: InkosEndpoint = {
   id: "ai360",
   label: "360 智脑",
   api: "openai-completions",

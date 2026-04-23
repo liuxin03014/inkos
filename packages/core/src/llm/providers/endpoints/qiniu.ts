@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const QINIU: InkosProvider = {
+export const QINIU: InkosEndpoint = {
   id: "qiniu",
   label: "七牛云 AI",
   api: "openai-completions",

@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const INTERNLM: InkosProvider = {
+export const INTERNLM: InkosEndpoint = {
   id: "internlm",
   label: "书生浦语 (InternLM)",
   api: "openai-completions",

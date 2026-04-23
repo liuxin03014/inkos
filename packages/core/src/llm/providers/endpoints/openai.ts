@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const OPENAI: InkosProvider = {
+export const OPENAI: InkosEndpoint = {
   id: "openai",
   label: "OpenAI",
   api: "openai-responses",

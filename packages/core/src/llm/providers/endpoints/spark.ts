@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const SPARK: InkosProvider = {
+export const SPARK: InkosEndpoint = {
   id: "spark",
   label: "讯飞星火",
   api: "openai-completions",

@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const GITEEAI: InkosProvider = {
+export const GITEEAI: InkosEndpoint = {
   id: "giteeai",
   label: "Gitee AI",
   api: "openai-completions",

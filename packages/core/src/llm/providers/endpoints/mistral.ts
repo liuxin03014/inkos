@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const MISTRAL: InkosProvider = {
+export const MISTRAL: InkosEndpoint = {
   id: "mistral",
   label: "Mistral AI",
   api: "openai-completions",

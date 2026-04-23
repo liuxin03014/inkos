@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const HIGRESS: InkosProvider = {
+export const HIGRESS: InkosEndpoint = {
   id: "higress",
   label: "Higress (网关)",
   api: "openai-completions",

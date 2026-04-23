@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const GLM_CODING_PLAN: InkosProvider = {
+export const GLM_CODING_PLAN: InkosEndpoint = {
   id: "glmCodingPlan",
   label: "GLM Coding Plan",
   api: "anthropic-messages",

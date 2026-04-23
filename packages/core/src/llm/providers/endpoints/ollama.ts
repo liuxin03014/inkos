@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const OLLAMA: InkosProvider = {
+export const OLLAMA: InkosEndpoint = {
   id: "ollama",
   label: "Ollama (本地)",
   api: "openai-completions",

@@ -1,5 +1,5 @@
 import type { InkosModel } from "./types.js";
-import { getAllProviders, getProvider } from "./index.js";
+import { getAllEndpoints, getEndpoint } from "./index.js";
 
 /**
  * provider id 优先级。Layer 2 全局扫时同 id 多条匹配按这个顺序取第一条，
@@ -27,14 +27,14 @@ export function lookupModel(
 ): InkosModel | undefined {
   const lowerId = modelId.toLowerCase();
 
-  const provider = getProvider(serviceId);
+  const provider = getEndpoint(serviceId);
   if (provider) {
     const hit = provider.models.find((m) => m.id.toLowerCase() === lowerId);
     if (hit) return hit;
   }
 
   const matches: Array<{ model: InkosModel; providerId: string }> = [];
-  for (const p of getAllProviders()) {
+  for (const p of getAllEndpoints()) {
     const hit = p.models.find((m) => m.id.toLowerCase() === lowerId);
     if (hit) matches.push({ model: hit, providerId: p.id });
   }
@@ -50,7 +50,7 @@ export function lookupModel(
 
 /** 某 service 下可用（enabled !== false）的模型列表 */
 export function listEnabledModels(serviceId: string): InkosModel[] {
-  const provider = getProvider(serviceId);
+  const provider = getEndpoint(serviceId);
   if (!provider) return [];
   return provider.models.filter((m) => m.enabled !== false);
 }

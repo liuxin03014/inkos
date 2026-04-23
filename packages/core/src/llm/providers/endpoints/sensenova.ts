@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const SENSENOVA: InkosProvider = {
+export const SENSENOVA: InkosEndpoint = {
   id: "sensenova",
   label: "商汤日日新",
   api: "openai-completions",

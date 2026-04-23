@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const VOLCENGINE: InkosProvider = {
+export const VOLCENGINE: InkosEndpoint = {
   id: "volcengine",
   label: "火山引擎 (豆包)",
   api: "openai-completions",

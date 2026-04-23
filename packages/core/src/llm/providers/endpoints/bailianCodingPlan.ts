@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const BAILIAN_CODING_PLAN: InkosProvider = {
+export const BAILIAN_CODING_PLAN: InkosEndpoint = {
   id: "bailianCodingPlan",
   label: "百炼 Coding Plan",
   api: "anthropic-messages",

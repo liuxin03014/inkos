@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const TENCENTCLOUD: InkosProvider = {
+export const TENCENTCLOUD: InkosEndpoint = {
   id: "tencentcloud",
   label: "腾讯云 (lkeap)",
   api: "openai-completions",

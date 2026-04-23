@@ -15,8 +15,9 @@ import type {
   ToolCall as PiToolCall,
 } from "@mariozechner/pi-ai";
 import { resolveServicePreset } from "./service-presets.js";
-import { getProvider } from "./providers/index.js";
+import { getEndpoint } from "./providers/index.js";
 import { lookupModel } from "./providers/lookup.js";
+import { resolvePiAiProvider } from "./providers/provider-to-pi-ai.js";
 
 
 // === Streaming Monitor Types ===
@@ -149,7 +150,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
   // --- Build pi-ai Model object ---
   const serviceName = config.service ?? "custom";
   const preset = resolveServicePreset(serviceName);
-  const inkosProvider = getProvider(serviceName);
+  const inkosProvider = getEndpoint(serviceName);
   const modelCard = lookupModel(serviceName, config.model);
 
   const piApi = resolvePiApi(serviceName, config.apiFormat, (inkosProvider?.api ?? preset?.api) as PiApi) as PiApi;
@@ -157,12 +158,15 @@ export function createLLMClient(config: LLMConfig): LLMClient {
   const extraHeaders = config.headers ?? parseEnvHeaders();
 
   const provider = config.provider === "anthropic" ? "anthropic" : "openai";
+  const piProvider = inkosProvider
+    ? resolvePiAiProvider(inkosProvider)
+    : provider;
 
   const piModel: PiModel<PiApi> = {
     id: modelCard?.deploymentName ?? config.model,
     name: modelCard?.displayName ?? config.model,
     api: piApi,
-    provider,
+    provider: piProvider,
     baseUrl,
     reasoning: modelCard?.abilities?.reasoning ?? (config.thinkingBudget ?? 0) > 0,
     input: modelCard?.abilities?.vision ? ["text", "image"] : ["text"],

@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const DEEPSEEK: InkosProvider = {
+export const DEEPSEEK: InkosEndpoint = {
   id: "deepseek",
   label: "DeepSeek",
   api: "openai-completions",

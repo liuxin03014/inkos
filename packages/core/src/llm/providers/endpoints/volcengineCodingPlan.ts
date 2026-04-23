@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const VOLCENGINE_CODING_PLAN: InkosProvider = {
+export const VOLCENGINE_CODING_PLAN: InkosEndpoint = {
   id: "volcengineCodingPlan",
   label: "火山 Coding Plan",
   api: "anthropic-messages",

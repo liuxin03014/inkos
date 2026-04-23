@@ -1,6 +1,6 @@
-import type { InkosProvider } from "../types.js";
+import type { InkosEndpoint } from "../types.js";
 
-export const BAICHUAN: InkosProvider = {
+export const BAICHUAN: InkosEndpoint = {
   id: "baichuan",
   label: "百川智能",
   api: "openai-completions",

@@ -1,4 +1,4 @@
-import { getProvider } from "./index.js";
+import { getEndpoint } from "./index.js";
 import { resolveServiceModelsBaseUrl } from "../service-presets.js";
 
 export interface VerifyResult {
@@ -23,7 +23,7 @@ async function probe(
   apiKey: string,
   baseUrl?: string,
 ): Promise<VerifyResult["probe"]> {
-  const provider = getProvider(service);
+  const provider = getEndpoint(service);
   const probeBaseUrl = baseUrl || provider?.modelsBaseUrl || provider?.baseUrl || resolveServiceModelsBaseUrl(service);
   if (!probeBaseUrl) {
     return { ok: false, models: 0, error: "无 baseUrl 可探测（custom / newapi / higress 需要用户填）" };
@@ -61,7 +61,7 @@ export async function verifyService(
 ): Promise<VerifyResult> {
   const probeResult = await probe(service, apiKey, opts?.baseUrl);
 
-  const provider = getProvider(service);
+  const provider = getEndpoint(service);
   const checkModel = opts?.checkModel ?? provider?.checkModel;
   if (!checkModel) {
     return { probe: probeResult, chat: null };
