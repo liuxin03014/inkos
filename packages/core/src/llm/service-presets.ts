@@ -35,7 +35,6 @@ export const SERVICE_PRESETS: Record<string, ServicePreset> = {
     providerFamily: "anthropic",
     api: "anthropic-messages",
     baseUrl: "https://dashscope.aliyuncs.com/apps/anthropic",
-    modelsBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     label: "百炼 (通义千问)",
     temperatureRange: [0, 2],
     defaultTemperature: 0.7,
@@ -75,8 +74,8 @@ export function resolveServicePreset(service: string): ServicePreset | undefined
     ...(legacy?.knownModels ? { knownModels: legacy.knownModels } : {}),
     // piProvider 字段已从 InkosEndpoint 移除（走 provider-to-pi-ai adapter），这里只保留 legacy fallback
     ...(legacy?.piProvider ? { piProvider: legacy.piProvider } : {}),
-    ...(provider?.modelsBaseUrl ?? legacy?.modelsBaseUrl
-      ? { modelsBaseUrl: provider?.modelsBaseUrl ?? legacy?.modelsBaseUrl }
+    ...((provider ? provider.modelsBaseUrl : legacy?.modelsBaseUrl)
+      ? { modelsBaseUrl: provider ? provider.modelsBaseUrl : legacy?.modelsBaseUrl }
       : {}),
   };
 }

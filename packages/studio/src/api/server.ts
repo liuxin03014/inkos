@@ -471,9 +471,12 @@ async function fetchModelsFromServiceBaseUrl(
   baseUrl: string,
   apiKey: string,
 ): Promise<{ models: Array<{ id: string; name: string }>; error?: string; authFailed?: boolean }> {
+  const endpoint = isCustomServiceId(serviceId)
+    ? undefined
+    : getAllEndpoints().find((ep) => ep.id === serviceId);
   const modelsBaseUrl = isCustomServiceId(serviceId)
     ? baseUrl
-    : resolveServiceModelsBaseUrl(serviceId) ?? baseUrl;
+    : endpoint?.modelsBaseUrl ?? (endpoint ? baseUrl : resolveServiceModelsBaseUrl(serviceId) ?? baseUrl);
   const modelsUrl = modelsBaseUrl.replace(/\/$/, "") + "/models";
   try {
     const res = await fetch(modelsUrl, {
@@ -583,7 +586,12 @@ async function probeServiceCapabilities(args: {
         await chatCompletion(client, model, [{ role: "user", content: "ping" }], { maxTokens: 2048 });
         const models = discoveredModels.length > 0
           ? discoveredModels
-          : preset?.knownModels?.map((id) => ({ id, name: id })) ?? [{ id: model, name: model }];
+          : endpoint?.models
+            .filter((m) => m.enabled !== false)
+            .filter((m) => isTextChatModelId(m.id))
+            .map((m) => ({ id: m.id, name: m.id }))
+            ?? preset?.knownModels?.map((id) => ({ id, name: id }))
+            ?? [{ id: model, name: model }];
         return {
           ok: true,
           models,

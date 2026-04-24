@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { listModelsForService } from "../llm/service-presets.js";
+import { listModelsForService, resolveServiceModelsBaseUrl } from "../llm/service-presets.js";
 
 describe("listModelsForService (B8)", () => {
   const originalEnv = process.env.INKOS_LLM_MODEL;
@@ -56,6 +56,34 @@ describe("listModelsForService (B8)", () => {
     const models = await listModelsForService("anthropic", "sk-test");
     expect(models.length).toBeGreaterThan(0);
     expect(models.some((m) => m.id === "claude-sonnet-4-6")).toBe(true);
+  });
+
+  it("bailian 不用 OpenAI 兼容 /models 污染 Anthropic 通道模型列表", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "https://dashscope.aliyuncs.com/compatible-mode/v1/models") {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ id: "kimi-k2.6" }, { id: "deepseek-v3.2" }] }),
+        };
+      }
+      return {
+        ok: false,
+        json: async () => ({ data: [] }),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const models = await listModelsForService("bailian", "sk-test");
+
+    expect(resolveServiceModelsBaseUrl("bailian")).toBe("https://dashscope.aliyuncs.com/apps/anthropic");
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "https://dashscope.aliyuncs.com/compatible-mode/v1/models",
+      expect.any(Object),
+    );
+    expect(models.some((m) => m.id === "qwen-turbo")).toBe(true);
+    expect(models.some((m) => m.id === "kimi-k2.6")).toBe(false);
+    expect(models.some((m) => m.id === "deepseek-v3.2")).toBe(false);
   });
 
   it("未知 service 返回空数组", async () => {

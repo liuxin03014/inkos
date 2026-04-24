@@ -1322,7 +1322,7 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(json.error).not.toContain("Moonshot");
   });
 
-  it("uses the preset models baseUrl when listing Bailian models", async () => {
+  it("does not return OpenAI-compatible Bailian models from the Anthropic channel connection test", async () => {
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,
       llm: {
@@ -1333,13 +1333,24 @@ describe("createStudioServer daemon lifecycle", () => {
       },
     }, null, 2), "utf-8");
     loadSecretsMock.mockResolvedValue({ services: { bailian: { apiKey: "sk-bailian" } } });
+    const bailianEndpoint = endpointMocks.find((ep) => ep.id === "bailian");
+    expect(bailianEndpoint).toBeDefined();
+    Object.assign(bailianEndpoint!, {
+      checkModel: "qwen-max",
+      api: "anthropic-messages",
+      baseUrl: "https://dashscope.aliyuncs.com/apps/anthropic",
+      models: [
+        { id: "qwen-max", maxOutput: 8192, contextWindowTokens: 131072, enabled: true },
+        { id: "kimi-k2.5", maxOutput: 32768, contextWindowTokens: 262144, enabled: true },
+      ],
+    });
 
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       if (url === "https://dashscope.aliyuncs.com/compatible-mode/v1/models") {
         return {
           ok: true,
-          json: async () => ({ data: [{ id: "qwen-max" }] }),
+          json: async () => ({ data: [{ id: "kimi-k2.6" }, { id: "deepseek-v3.2" }] }),
           text: async (): Promise<string> => "",
         };
       }
@@ -1364,13 +1375,22 @@ describe("createStudioServer daemon lifecycle", () => {
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);
 
-    const response = await app.request("http://localhost/api/v1/services/bailian/models");
+    const response = await app.request("http://localhost/api/v1/services/bailian/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey: "sk-bailian",
+        apiFormat: "chat",
+        stream: false,
+      }),
+    });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      models: [{ id: "qwen-max", name: "qwen-max" }],
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
+    const body = await response.json() as { models: Array<{ id: string }> };
+    expect(body.models.map((m) => m.id)).toEqual(["qwen-max", "kimi-k2.5"]);
+    expect(body.models.some((m) => m.id === "kimi-k2.6")).toBe(false);
+    expect(body.models.some((m) => m.id === "deepseek-v3.2")).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalledWith(
       "https://dashscope.aliyuncs.com/compatible-mode/v1/models",
       expect.any(Object),
     );
