@@ -51,6 +51,12 @@ describe("providers structural integrity", () => {
     ]);
   });
 
+  it("Zhipu check model uses a stable chat alias", () => {
+    const zhipu = getEndpoint("zhipu");
+    expect(zhipu?.checkModel).toBe("glm-4-flash");
+    expect(zhipu?.models.some((model) => model.id === "glm-4-flash" && model.enabled !== false)).toBe(true);
+  });
+
   it("A 组至少有 5 个核心 provider", () => {
     const ids = getAllEndpoints().map((p) => p.id);
     expect(ids).toContain("anthropic");

@@ -228,6 +228,59 @@ describe("loadProjectConfig local provider auth", () => {
     expect(config.llm.apiKey).toBe("sk-corp");
   });
 
+  it("does not mix stale top-level env-era model/baseUrl with selected Studio service", async () => {
+    root = await mkdtemp(join(tmpdir(), "inkos-config-loader-studio-stale-top-level-"));
+    for (const key of ENV_KEYS) {
+      previousEnv.set(key, process.env[key]);
+      process.env[key] = "";
+    }
+
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      name: "studio-stale-project",
+      version: "0.1.0",
+      language: "zh",
+      llm: {
+        configSource: "studio",
+        service: "google",
+        model: "kimi-k2.5",
+        baseUrl: "https://api.moonshot.cn/v1",
+        apiKey: "sk-moon-inline",
+        services: [
+          { service: "google", temperature: 0.7, apiFormat: "chat", stream: true },
+          { service: "moonshot", temperature: 1, apiFormat: "chat", stream: true },
+        ],
+        defaultModel: "gemini-2.5-flash",
+      },
+      notify: [],
+    }, null, 2), "utf-8");
+    await writeFile(join(root, ".env"), [
+      "INKOS_LLM_PROVIDER=custom",
+      "INKOS_LLM_BASE_URL=https://api.moonshot.cn/v1",
+      "INKOS_LLM_MODEL=kimi-k2.5",
+      "INKOS_LLM_API_KEY=sk-env-moon",
+    ].join("\n"), "utf-8");
+    await mkdir(join(root, ".inkos"), { recursive: true });
+    await writeFile(
+      join(root, ".inkos", "secrets.json"),
+      JSON.stringify({
+        services: {
+          google: { apiKey: "sk-google" },
+          moonshot: { apiKey: "sk-moon" },
+        },
+      }, null, 2),
+      "utf-8",
+    );
+
+    const config = await loadProjectConfig(root, { requireApiKey: false });
+
+    expect(config.llm.configSource).toBe("studio");
+    expect(config.llm.service).toBe("google");
+    expect(config.llm.provider).toBe("openai");
+    expect(config.llm.baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta/openai");
+    expect(config.llm.model).toBe("gemini-2.5-flash");
+    expect(config.llm.apiKey).toBe("sk-google");
+  });
+
   it("falls back to env when Studio config is still the empty bootstrap state", async () => {
     root = await mkdtemp(join(tmpdir(), "inkos-config-loader-studio-bootstrap-"));
     for (const key of ENV_KEYS) {

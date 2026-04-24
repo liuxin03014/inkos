@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { ProjectConfigSchema, type ProjectConfig } from "../models/project.js";
 import { getServiceApiKey } from "../llm/secrets.js";
 import { resolveServicePreset, resolveServiceProviderFamily } from "../llm/service-presets.js";
+import { getEndpoint } from "../llm/providers/index.js";
 
 export const GLOBAL_CONFIG_DIR = join(homedir(), ".inkos");
 export const GLOBAL_ENV_PATH = join(GLOBAL_CONFIG_DIR, ".env");
@@ -97,15 +98,25 @@ export async function loadProjectConfig(
     if (selectedEntry) {
       llm.service = selectedEntry.service;
 
-      if (!(typeof llm.model === "string" && llm.model.length > 0) && typeof llm.defaultModel === "string" && llm.defaultModel.length > 0) {
+      if (configSource === "studio") {
+        llm.model = resolveStudioServiceModel(
+          selectedEntry,
+          typeof llm.model === "string" ? llm.model : undefined,
+          typeof llm.defaultModel === "string" ? llm.defaultModel : undefined,
+        );
+      } else if (!(typeof llm.model === "string" && llm.model.length > 0) && typeof llm.defaultModel === "string" && llm.defaultModel.length > 0) {
         llm.model = llm.defaultModel;
       }
 
-      if (!(typeof llm.baseUrl === "string" && llm.baseUrl.length > 0)) {
+      if (configSource === "studio") {
+        llm.baseUrl = selectedEntry.baseUrl ?? resolveServicePreset(selectedEntry.service)?.baseUrl ?? "";
+      } else if (!(typeof llm.baseUrl === "string" && llm.baseUrl.length > 0)) {
         llm.baseUrl = selectedEntry.baseUrl ?? resolveServicePreset(selectedEntry.service)?.baseUrl ?? "";
       }
 
-      if (!(typeof llm.provider === "string" && llm.provider.length > 0)) {
+      if (configSource === "studio") {
+        llm.provider = deriveProviderFromService(selectedEntry.service);
+      } else if (!(typeof llm.provider === "string" && llm.provider.length > 0)) {
         llm.provider = deriveProviderFromService(selectedEntry.service);
       }
 
@@ -273,6 +284,30 @@ function selectServiceEntry(
     return services.find((entry) => entry.service === configuredService || serviceEntryKey(entry) === configuredService) ?? services[0];
   }
   return services[0];
+}
+
+function resolveStudioServiceModel(
+  entry: ServiceConfigEntry,
+  currentModel: string | undefined,
+  defaultModel: string | undefined,
+): string {
+  if (entry.service === "custom") {
+    return defaultModel || currentModel || "noop-model";
+  }
+
+  const endpoint = getEndpoint(entry.service);
+  const candidate = [defaultModel, currentModel]
+    .find((model): model is string => Boolean(
+      model
+      && endpoint?.models.some((knownModel) => knownModel.enabled !== false && knownModel.id.toLowerCase() === model.toLowerCase()),
+    ));
+  if (candidate) return candidate;
+
+  return endpoint?.checkModel
+    ?? endpoint?.models.find((model) => model.enabled !== false)?.id
+    ?? defaultModel
+    ?? currentModel
+    ?? "noop-model";
 }
 
 function serviceEntryKey(entry: ServiceConfigEntry): string {
