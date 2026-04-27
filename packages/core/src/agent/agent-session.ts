@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Agent } from "@mariozechner/pi-agent-core";
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 import { streamSimple, getModel, getEnvApiKey } from "@mariozechner/pi-ai";
@@ -16,6 +17,13 @@ import {
   createWriteTruthFileTool,
 } from "./agent-tools.js";
 import { createBookContextTransform } from "./context-transform.js";
+import {
+  appendTranscriptEvent,
+  nextTranscriptSeq,
+  readTranscriptEvents,
+} from "../interaction/session-transcript.js";
+import { restoreAgentMessagesFromTranscript } from "../interaction/session-transcript-restore.js";
+import type { TranscriptRole } from "../interaction/session-transcript-schema.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,8 +51,8 @@ export interface AgentSessionConfig {
 export interface AgentSessionResult {
   /** Extracted text from the final assistant message. */
   responseText: string;
-  /** Full conversation history for persistence. */
-  messages: Array<{ role: string; content: string; thinking?: string }>;
+  /** Full raw Agent conversation history. */
+  messages: AgentMessage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +67,8 @@ export interface AgentSessionResult {
 interface CachedAgent {
   agent: Agent;
   bookId: string | null;
+  modelId: string | null;
+  lastCommittedSeq: number;
   lastActive: number;
 }
 
@@ -108,6 +118,84 @@ function resolveModel(spec: AgentSessionConfig["model"]): Model<Api> {
     throw new Error(`Invalid model spec: provider=${provider}, modelId=${modelId}`);
   }
   return getModel(provider as any, modelId as any);
+}
+
+function modelIdFromSpec(spec: AgentSessionConfig["model"]): string | null {
+  if (!spec || typeof spec !== "object") return null;
+  if ("id" in spec && typeof spec.id === "string") return spec.id;
+  if ("modelId" in spec && typeof spec.modelId === "string") return spec.modelId;
+  return null;
+}
+
+async function latestCommittedSeq(projectRoot: string, sessionId: string): Promise<number> {
+  const events = await readTranscriptEvents(projectRoot, sessionId);
+  return events
+    .filter((event) => event.type === "request_committed")
+    .reduce((max, event) => Math.max(max, event.seq), 0);
+}
+
+function transcriptRoleForMessage(message: AgentMessage): TranscriptRole | null {
+  if (!message || typeof message !== "object" || !("role" in message)) return null;
+  const role = (message as { role?: unknown }).role;
+  return role === "user" || role === "assistant" || role === "toolResult" || role === "system"
+    ? role
+    : null;
+}
+
+function firstToolCallId(message: AgentMessage): string | undefined {
+  if (!message || typeof message !== "object" || !("content" in message)) return undefined;
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return undefined;
+  const block = content.find(
+    (item): item is { type: "toolCall"; id: string } =>
+      !!item &&
+      typeof item === "object" &&
+      (item as { type?: unknown }).type === "toolCall" &&
+      typeof (item as { id?: unknown }).id === "string",
+  );
+  return block?.id;
+}
+
+function toolCallIdForMessage(message: AgentMessage): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  if ((message as { role?: unknown }).role === "toolResult") {
+    const toolCallId = (message as { toolCallId?: unknown }).toolCallId;
+    return typeof toolCallId === "string" && toolCallId.length > 0 ? toolCallId : undefined;
+  }
+  return firstToolCallId(message);
+}
+
+function messageTimestamp(message: AgentMessage): number {
+  if (message && typeof message === "object") {
+    const timestamp = (message as { timestamp?: unknown }).timestamp;
+    if (typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp >= 0) {
+      return Math.floor(timestamp);
+    }
+  }
+  return Date.now();
+}
+
+async function ensureSessionCreatedEvent(
+  projectRoot: string,
+  sessionId: string,
+  bookId: string | null,
+): Promise<number> {
+  const events = await readTranscriptEvents(projectRoot, sessionId);
+  if (events.length > 0) return events.reduce((max, event) => Math.max(max, event.seq), 0) + 1;
+
+  const now = Date.now();
+  await appendTranscriptEvent(projectRoot, {
+    type: "session_created",
+    version: 1,
+    sessionId,
+    seq: 1,
+    timestamp: now,
+    bookId,
+    title: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return 2;
 }
 
 /**
@@ -218,6 +306,7 @@ export async function runAgentSession(
   // skipped) and we don't want that to (a) throw in path.join or (b) trigger
   // a spurious cache eviction because `null !== undefined`.
   const bookId: string | null = config.bookId ?? null;
+  const requestedModelId = modelIdFromSpec(config.model);
 
   // ----- Resolve or create Agent -----
   let cached = agentCache.get(sessionId);
@@ -228,27 +317,27 @@ export async function runAgentSession(
     // in systemPrompt / tools / transformContext), so a mismatch means the
     // cached Agent would keep using stale context — including reading truth
     // files from the wrong book's story/ directory.
-    const currentModelId = (cached.agent.state.model as any)?.id;
-    const newModelId = typeof config.model === 'object' && 'id' in config.model
-      ? (config.model as any).id
-      : undefined;
-    const modelChanged = !!(currentModelId && newModelId && currentModelId !== newModelId);
+    const modelChanged = !!(
+      cached.modelId &&
+      requestedModelId &&
+      cached.modelId !== requestedModelId
+    );
     const bookChanged = cached.bookId !== bookId;
 
     if (modelChanged || bookChanged) {
-      // Preserve conversation messages for re-injection
-      const preservedMessages = agentMessagesToPlain(cached.agent.state.messages);
       agentCache.delete(sessionId);
       cached = undefined;
-      // Pass preserved messages as initialMessages if none were provided
-      if (!initialMessages || initialMessages.length === 0) {
-        initialMessages = preservedMessages;
-      }
     }
   }
 
   if (!cached) {
     const model = resolveModel(config.model);
+    const restoredMessages = await restoreAgentMessagesFromTranscript(projectRoot, sessionId);
+    const initialAgentMessages = restoredMessages.length > 0
+      ? restoredMessages
+      : initialMessages && initialMessages.length > 0
+        ? plainToAgentMessages(initialMessages)
+        : [];
     const agent = new Agent({
       initialState: {
         model,
@@ -264,6 +353,7 @@ export async function runAgentSession(
           createGrepTool(projectRoot),
           createLsTool(projectRoot),
         ],
+        messages: initialAgentMessages,
       },
       transformContext: createBookContextTransform(bookId, projectRoot),
       streamFn: streamSimple,
@@ -273,12 +363,13 @@ export async function runAgentSession(
       },
     });
 
-    // Restore prior conversation if provided.
-    if (initialMessages && initialMessages.length > 0) {
-      agent.state.messages = plainToAgentMessages(initialMessages);
-    }
-
-    cached = { agent, bookId, lastActive: Date.now() };
+    cached = {
+      agent,
+      bookId,
+      modelId: model.id ?? requestedModelId,
+      lastCommittedSeq: await latestCommittedSeq(projectRoot, sessionId),
+      lastActive: Date.now(),
+    };
     agentCache.set(sessionId, cached);
     ensureCleanupTimer();
   }
@@ -286,27 +377,96 @@ export async function runAgentSession(
   cached.lastActive = Date.now();
   const { agent } = cached;
 
-  // ----- Subscribe to events (for SSE streaming to frontend) -----
-  let unsubscribe: (() => void) | undefined;
-  if (onEvent) {
-    unsubscribe = agent.subscribe((event: AgentEvent) => {
-      onEvent(event);
+  // ----- Prepare transcript persistence -----
+  const requestId = randomUUID();
+  let seq = await ensureSessionCreatedEvent(projectRoot, sessionId, bookId);
+  await appendTranscriptEvent(projectRoot, {
+    type: "request_started",
+    version: 1,
+    sessionId,
+    requestId,
+    seq: seq++,
+    timestamp: Date.now(),
+    input: userMessage,
+  });
+
+  let parentUuid: string | null = null;
+  let piTurnIndex = 0;
+  let lastAssistantUuid: string | null = null;
+
+  const persistAgentEvent = async (event: AgentEvent): Promise<void> => {
+    if (event.type === "turn_start") {
+      piTurnIndex += 1;
+      return;
+    }
+    if (event.type !== "message_end") return;
+
+    const role = transcriptRoleForMessage(event.message);
+    if (!role) return;
+
+    const uuid = randomUUID();
+    const isToolResult = role === "toolResult";
+    const toolCallId = toolCallIdForMessage(event.message);
+    await appendTranscriptEvent(projectRoot, {
+      type: "message",
+      version: 1,
+      sessionId,
+      requestId,
+      uuid,
+      parentUuid: isToolResult && lastAssistantUuid ? lastAssistantUuid : parentUuid,
+      seq: seq++,
+      role,
+      timestamp: messageTimestamp(event.message),
+      piTurnIndex,
+      ...(toolCallId ? { toolCallId } : {}),
+      ...(isToolResult && lastAssistantUuid
+        ? { sourceToolAssistantUuid: lastAssistantUuid }
+        : {}),
+      message: event.message,
     });
-  }
+
+    if (role === "assistant") lastAssistantUuid = uuid;
+    parentUuid = uuid;
+  };
+
+  // ----- Subscribe to events (transcript persistence + SSE forwarding) -----
+  const unsubscribe = agent.subscribe(async (event: AgentEvent) => {
+    await persistAgentEvent(event);
+    onEvent?.(event);
+  });
 
   // ----- Execute the turn -----
   try {
     await agent.prompt(userMessage);
+    await appendTranscriptEvent(projectRoot, {
+      type: "request_committed",
+      version: 1,
+      sessionId,
+      requestId,
+      seq: seq++,
+      timestamp: Date.now(),
+    });
+    cached.lastCommittedSeq = seq - 1;
+  } catch (error) {
+    await appendTranscriptEvent(projectRoot, {
+      type: "request_failed",
+      version: 1,
+      sessionId,
+      requestId,
+      seq: seq++,
+      timestamp: Date.now(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   } finally {
-    unsubscribe?.();
+    unsubscribe();
   }
 
   // ----- Extract result -----
   const allMessages = agent.state.messages;
   const responseText = extractResponseText(allMessages);
-  const plainMessages = agentMessagesToPlain(allMessages);
 
-  return { responseText, messages: plainMessages };
+  return { responseText, messages: allMessages.slice() };
 }
 
 /**
