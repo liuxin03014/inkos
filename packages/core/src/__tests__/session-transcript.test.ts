@@ -164,4 +164,11 @@ describe("session transcript codec", () => {
       { role: "assistant", content: [{ type: "text", text: "fallback" }] },
     ]);
   });
+
+  it("从 core index 导出 transcript helper", async () => {
+    const core = await import("../index.js");
+    expect(typeof core.readTranscriptEvents).toBe("function");
+    expect(typeof core.restoreAgentMessagesFromTranscript).toBe("function");
+    expect(typeof core.TranscriptEventSchema.safeParse).toBe("function");
+  });
 });
