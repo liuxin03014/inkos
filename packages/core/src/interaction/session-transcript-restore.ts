@@ -443,6 +443,8 @@ function messageEventsToInteractionMessages(events: MessageEvent[]): Interaction
     pendingToolExecutions = [];
     pendingThinking = [];
   };
+  const toolCallKey = (requestId: string, toolCallId: string): string =>
+    `${requestId}\0${toolCallId}`;
 
   const objectArgs = (value: unknown): Record<string, unknown> | undefined => {
     if (isObject(value)) return value;
@@ -466,7 +468,7 @@ function messageEventsToInteractionMessages(events: MessageEvent[]): Interaction
       if (typeof block.id !== "string" || !block.id) continue;
       const tool = typeof block.name === "string" && block.name ? block.name : "tool";
       const args = objectArgs(block.arguments);
-      toolCalls.set(block.id, {
+      toolCalls.set(toolCallKey(event.requestId, block.id), {
         id: block.id,
         tool,
         ...(args ? { args } : {}),
@@ -485,7 +487,7 @@ function messageEventsToInteractionMessages(events: MessageEvent[]): Interaction
         : "";
     if (!toolCallId) return null;
 
-    const call = toolCalls.get(toolCallId);
+    const call = toolCalls.get(toolCallKey(event.requestId, toolCallId));
     const tool = typeof raw.toolName === "string" && raw.toolName
       ? raw.toolName
       : call?.tool ?? "tool";

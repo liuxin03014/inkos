@@ -1167,4 +1167,143 @@ describe("session transcript restore", () => {
     expect(secondAssistant).not.toHaveProperty("thinking");
     expect(secondAssistant).not.toHaveProperty("toolExecutions");
   });
+
+  it("does not resolve tool results with tool calls from a previous request", async () => {
+    await appendTranscriptEvent(projectRoot, {
+      type: "session_created",
+      version: 1,
+      sessionId: "s1",
+      seq: 1,
+      timestamp: 1,
+      bookId: "book-a",
+      title: null,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await appendTranscriptEvent(projectRoot, {
+      type: "request_started",
+      version: 1,
+      sessionId: "s1",
+      requestId: "r1",
+      seq: 2,
+      timestamp: 2,
+      input: "第一轮",
+    });
+    await appendTranscriptEvent(projectRoot, {
+      type: "message",
+      version: 1,
+      sessionId: "s1",
+      requestId: "r1",
+      uuid: "a1",
+      parentUuid: null,
+      seq: 3,
+      role: "assistant",
+      timestamp: 3,
+      toolCallId: "shared-tool",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "shared-tool", name: "ls", arguments: { subdir: "story/roles" } },
+        ],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude",
+        usage,
+        stopReason: "toolUse",
+        timestamp: 3,
+      },
+    } as MessageEvent);
+    await appendTranscriptEvent(projectRoot, {
+      type: "request_committed",
+      version: 1,
+      sessionId: "s1",
+      requestId: "r1",
+      seq: 4,
+      timestamp: 4,
+    });
+    await appendTranscriptEvent(projectRoot, {
+      type: "request_started",
+      version: 1,
+      sessionId: "s1",
+      requestId: "r2",
+      seq: 5,
+      timestamp: 5,
+      input: "第二轮",
+    });
+    await appendTranscriptEvent(projectRoot, {
+      type: "message",
+      version: 1,
+      sessionId: "s1",
+      requestId: "r2",
+      uuid: "u2",
+      parentUuid: null,
+      seq: 6,
+      role: "user",
+      timestamp: 6,
+      message: { role: "user", content: "第二轮", timestamp: 6 },
+    } as MessageEvent);
+    await appendTranscriptEvent(projectRoot, {
+      type: "message",
+      version: 1,
+      sessionId: "s1",
+      requestId: "r2",
+      uuid: "t2",
+      parentUuid: "u2",
+      seq: 7,
+      role: "toolResult",
+      timestamp: 7,
+      toolCallId: "shared-tool",
+      message: {
+        role: "toolResult",
+        toolCallId: "shared-tool",
+        toolName: "ls",
+        content: [{ type: "text", text: "chapters/" }],
+        isError: false,
+        timestamp: 7,
+      },
+    } as MessageEvent);
+    await appendTranscriptEvent(projectRoot, {
+      type: "message",
+      version: 1,
+      sessionId: "s1",
+      requestId: "r2",
+      uuid: "a2",
+      parentUuid: "t2",
+      seq: 8,
+      role: "assistant",
+      timestamp: 8,
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "第二轮回答" }],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude",
+        usage,
+        stopReason: "stop",
+        timestamp: 8,
+      },
+    } as MessageEvent);
+    await appendTranscriptEvent(projectRoot, {
+      type: "request_committed",
+      version: 1,
+      sessionId: "s1",
+      requestId: "r2",
+      seq: 9,
+      timestamp: 9,
+    });
+
+    const session = await deriveBookSessionFromTranscript(projectRoot, "s1");
+    const secondAssistant = session?.messages.find((message) => message.content === "第二轮回答");
+
+    expect(secondAssistant?.toolExecutions).toEqual([
+      expect.objectContaining({
+        id: "shared-tool",
+        tool: "ls",
+        result: "chapters/",
+        startedAt: 7,
+        completedAt: 7,
+      }),
+    ]);
+    expect(secondAssistant?.toolExecutions?.[0]).not.toHaveProperty("args");
+  });
 });
