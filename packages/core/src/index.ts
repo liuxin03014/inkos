@@ -78,6 +78,8 @@ export {
   gatherPlanningMaterials,
   type PlanningMaterials,
 } from "./utils/planning-materials.js";
+export { assertSafeBookId, deriveBookIdFromTitle, isSafeBookId } from "./utils/book-id.js";
+export { safeChildPath } from "./utils/path-safety.js";
 export {
   AutomationModeSchema,
   type AutomationMode,

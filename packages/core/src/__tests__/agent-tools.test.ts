@@ -160,6 +160,65 @@ describe("agent deterministic writing tools", () => {
     expect(pipeline.writeNextChapter).toHaveBeenCalledWith("harbor", 2600);
   });
 
+  it("uses the active book for writer when bookId is omitted", async () => {
+    const pipeline = {
+      writeNextChapter: vi.fn(async () => ({
+        chapterNumber: 4,
+        wordCount: 2600,
+      })),
+    };
+    const tool = createSubAgentTool(pipeline as never, "harbor");
+
+    await tool.execute("tool-writer-active", {
+      agent: "writer",
+      chapterWordCount: 2600,
+      instruction: "继续写下一章",
+    } as any);
+
+    expect(pipeline.writeNextChapter).toHaveBeenCalledWith("harbor", 2600);
+  });
+
+  it("blocks non-architect sub-agents when no book is active", async () => {
+    const pipeline = {
+      writeNextChapter: vi.fn(async () => ({
+        chapterNumber: 4,
+        wordCount: 2600,
+      })),
+    };
+    const tool = createSubAgentTool(pipeline as never, null);
+
+    const result = await tool.execute("tool-writer-no-book", {
+      agent: "writer",
+      instruction: "继续写下一章",
+    } as any);
+
+    expect(pipeline.writeNextChapter).not.toHaveBeenCalled();
+    expect(result.content[0]?.type).toBe("text");
+    if (result.content[0]?.type === "text") {
+      expect(result.content[0].text).toContain("No active book");
+    }
+  });
+
+  it("allows architect revise mode to use the active book", async () => {
+    const pipeline = {
+      reviseFoundation: vi.fn(async () => undefined),
+    };
+    const tool = createSubAgentTool(pipeline as never, "harbor");
+
+    const result = await tool.execute("tool-architect-revise-active", {
+      agent: "architect",
+      revise: true,
+      feedback: "把角色目录改成一人一卡",
+      instruction: "重写架构稿",
+    } as any);
+
+    expect(pipeline.reviseFoundation).toHaveBeenCalledWith("harbor", "把角色目录改成一人一卡");
+    expect(result.content[0]?.type).toBe("text");
+    if (result.content[0]?.type === "text") {
+      expect(result.content[0].text).toContain("harbor");
+    }
+  });
+
   it("prefers explicit reviser mode over instruction guessing", async () => {
     const pipeline = {
       reviseDraft: vi.fn(async () => ({
@@ -243,5 +302,19 @@ describe("agent deterministic writing tools", () => {
     expect(result.content[0]?.type).toBe("text");
     await expect(readFile(join(state.bookDir("harbor"), "story", "runtime", "notes.md"), "utf-8"))
       .resolves.toContain("Watch the harbor ledger");
+  });
+
+  it("rejects unsafe truth file names", async () => {
+    const tool = createWriteTruthFileTool({} as never, root, "harbor");
+
+    const result = await tool.execute("tool-truth-unsafe", {
+      fileName: "../escape.md",
+      content: "escape",
+    });
+
+    expect(result.content[0]?.type).toBe("text");
+    if (result.content[0]?.type === "text") {
+      expect(result.content[0].text).toContain("Invalid truth file name");
+    }
   });
 });

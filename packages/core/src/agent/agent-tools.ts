@@ -3,10 +3,12 @@ import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@mario
 import type { PipelineRunner } from "../pipeline/runner.js";
 import { type ReviseMode } from "../agents/reviser.js";
 import { readFile, writeFile, readdir, stat } from "node:fs/promises";
-import { isAbsolute, join, normalize, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { StateManager } from "../state/manager.js";
 import { createInteractionToolsFromDeps } from "../interaction/project-tools.js";
 import { writeExportArtifact } from "../interaction/export-artifact.js";
+import { assertSafeBookId, deriveBookIdFromTitle } from "../utils/book-id.js";
+import { safeChildPath } from "../utils/path-safety.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -23,11 +25,7 @@ function textResult<T = undefined>(text: string, details?: T): AgentToolResult<T
  * against path-traversal (../ etc.).
  */
 function safeBooksPath(booksRoot: string, relativePath: string): string {
-  const resolved = resolve(booksRoot, normalize(relativePath));
-  if (!resolved.startsWith(booksRoot)) {
-    throw new Error(`Path traversal blocked: ${relativePath}`);
-  }
-  return resolved;
+  return safeChildPath(booksRoot, relativePath);
 }
 
 function resolveToolBookId(
@@ -39,7 +37,11 @@ function resolveToolBookId(
   if (!resolvedBookId) {
     throw new Error(`${toolName} requires bookId when there is no active book.`);
   }
-  return resolvedBookId;
+  const safeBookId = assertSafeBookId(resolvedBookId, `${toolName}.bookId`);
+  if (paramsBookId && activeBookId && safeBookId !== activeBookId) {
+    throw new Error(`${toolName}.bookId must match the active book.`);
+  }
+  return safeBookId;
 }
 
 function createDeterministicInteractionTools(pipeline: PipelineRunner, projectRoot: string) {
@@ -100,15 +102,6 @@ const SubAgentParams = Type.Object({
   approvedOnly: Type.Optional(Type.Boolean({ description: "exporter only: export only approved chapters. Default: false" })),
 });
 
-function deriveBookIdFromTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 30);
-}
-
 export function createSubAgentTool(
   pipeline: PipelineRunner,
   activeBookId: string | null,
@@ -135,27 +128,31 @@ export function createSubAgentTool(
       };
 
       try {
+        if (!activeBookId && agent !== "architect") {
+          return textResult("No active book. Only the architect agent can create a book from this session.");
+        }
+        if (activeBookId && agent === "architect" && !revise) {
+          return textResult("当前已有书籍，不需要建书。如果你想创建新书，请先回到首页。");
+        }
+
         switch (agent) {
           case "architect": {
             if (revise) {
-              if (!bookId) {
-                return textResult("Error: architect revise 模式需要 bookId，用于定位要重写的书。");
-              }
-              progress(`Revising foundation for "${bookId}"...`);
-              await pipeline.reviseFoundation(bookId, feedback ?? instruction);
-              progress(`Foundation revised for "${bookId}".`);
+              const targetBookId = resolveToolBookId("architect", bookId, activeBookId);
+              progress(`Revising foundation for "${targetBookId}"...`);
+              await pipeline.reviseFoundation(targetBookId, feedback ?? instruction);
+              progress(`Foundation revised for "${targetBookId}".`);
               return textResult(
-                `Book "${bookId}" 架构稿已按要求重写。原书的条目式架构稿已备份到 story/.backup-phase4-<时间戳>/。`,
+                `Book "${targetBookId}" 架构稿已按要求重写。原书的条目式架构稿已备份到 story/.backup-phase4-<时间戳>/。`,
               );
-            }
-            if (activeBookId) {
-              return textResult("当前已有书籍，不需要建书。如果你想创建新书，请先回到首页。");
             }
             const resolvedTitle = title?.trim();
             if (!resolvedTitle) {
               return textResult('Error: title is required for the architect agent.');
             }
-            const id = bookId || deriveBookIdFromTitle(resolvedTitle) || `book-${Date.now().toString(36)}`;
+            const id = bookId
+              ? assertSafeBookId(bookId, "architect.bookId")
+              : deriveBookIdFromTitle(resolvedTitle) || `book-${Date.now().toString(36)}`;
             const now = new Date().toISOString();
             progress(`Starting architect for book "${id}"...`);
             await pipeline.initBook(
@@ -181,21 +178,21 @@ export function createSubAgentTool(
           }
 
           case "writer": {
-            if (!bookId) return textResult("Error: bookId is required for the writer agent.");
-            progress(`Writing next chapter for "${bookId}"...`);
-            const result = await pipeline.writeNextChapter(bookId, chapterWordCount);
-            progress(`Writer finished chapter for "${bookId}".`);
+            const targetBookId = resolveToolBookId("writer", bookId, activeBookId);
+            progress(`Writing next chapter for "${targetBookId}"...`);
+            const result = await pipeline.writeNextChapter(targetBookId, chapterWordCount);
+            progress(`Writer finished chapter for "${targetBookId}".`);
             return textResult(
-              `Chapter written for "${bookId}". ` +
+              `Chapter written for "${targetBookId}". ` +
               `Word count: ${(result as any).wordCount ?? "unknown"}.`,
             );
           }
 
           case "auditor": {
-            if (!bookId) return textResult("Error: bookId is required for the auditor agent.");
-            progress(`Auditing chapter ${chapterNumber ?? "latest"} for "${bookId}"...`);
-            const audit = await pipeline.auditDraft(bookId, chapterNumber);
-            progress(`Audit complete for "${bookId}".`);
+            const targetBookId = resolveToolBookId("auditor", bookId, activeBookId);
+            progress(`Auditing chapter ${chapterNumber ?? "latest"} for "${targetBookId}"...`);
+            const audit = await pipeline.auditDraft(targetBookId, chapterNumber);
+            progress(`Audit complete for "${targetBookId}".`);
             const issueLines = (audit.issues ?? [])
               .map((i: any) => `[${i.severity}] ${i.description}`)
               .join("\n");
@@ -206,16 +203,16 @@ export function createSubAgentTool(
           }
 
           case "reviser": {
-            if (!bookId) return textResult("Error: bookId is required for the reviser agent.");
+            const targetBookId = resolveToolBookId("reviser", bookId, activeBookId);
             const resolvedMode: ReviseMode = (mode as ReviseMode) ?? "spot-fix";
-            progress(`Revising "${bookId}" chapter ${chapterNumber ?? "latest"} in ${resolvedMode} mode...`);
-            await pipeline.reviseDraft(bookId, chapterNumber, resolvedMode);
-            progress(`Revision complete for "${bookId}".`);
-            return textResult(`Revision (${resolvedMode}) complete for "${bookId}" chapter ${chapterNumber ?? "latest"}.`);
+            progress(`Revising "${targetBookId}" chapter ${chapterNumber ?? "latest"} in ${resolvedMode} mode...`);
+            await pipeline.reviseDraft(targetBookId, chapterNumber, resolvedMode);
+            progress(`Revision complete for "${targetBookId}".`);
+            return textResult(`Revision (${resolvedMode}) complete for "${targetBookId}" chapter ${chapterNumber ?? "latest"}.`);
           }
 
           case "exporter": {
-            if (!bookId) return textResult("Error: bookId is required for the exporter agent.");
+            const targetBookId = resolveToolBookId("exporter", bookId, activeBookId);
             if (!projectRoot) return textResult("Error: exporter requires projectRoot.");
             const inferredFormat = format ?? (/epub/i.test(instruction)
               ? "epub"
@@ -224,12 +221,12 @@ export function createSubAgentTool(
                 : "txt");
             const exportApprovedOnly = approvedOnly ?? /approved|已通过|通过章节/.test(instruction);
             const state = new StateManager(projectRoot);
-            const result = await writeExportArtifact(state, bookId, {
+            const result = await writeExportArtifact(state, targetBookId, {
               format: inferredFormat,
               approvedOnly: exportApprovedOnly,
             });
             return textResult(
-              `Exported "${bookId}": ${result.chaptersExported} chapters, ${result.totalWords} words → ${result.outputPath}`,
+              `Exported "${targetBookId}": ${result.chaptersExported} chapters, ${result.totalWords} words → ${result.outputPath}`,
             );
           }
 
@@ -254,6 +251,33 @@ const WriteTruthFileParams = Type.Object({
   content: Type.String({ description: "Full replacement content for the truth file." }),
 });
 
+const SAFE_TRUTH_FILE_NAMES = new Set([
+  "author_intent.md",
+  "current_focus.md",
+  "story_bible.md",
+  "volume_outline.md",
+  "book_rules.md",
+  "character_matrix.md",
+  "current_state.md",
+  "pending_hooks.md",
+  "chapter_summaries.md",
+]);
+
+function assertSafeTruthFileName(fileName: string): string {
+  const trimmed = fileName.trim().toLowerCase();
+  const normalized = trimmed.endsWith(".md") ? trimmed : `${trimmed}.md`;
+  if (
+    !trimmed ||
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("..") ||
+    !SAFE_TRUTH_FILE_NAMES.has(normalized)
+  ) {
+    throw new Error(`Invalid truth file name: ${JSON.stringify(fileName)}`);
+  }
+  return normalized;
+}
+
 export function createWriteTruthFileTool(
   pipeline: PipelineRunner,
   projectRoot: string,
@@ -266,9 +290,14 @@ export function createWriteTruthFileTool(
     label: "Write Truth File",
     parameters: WriteTruthFileParams,
     async execute(_toolCallId, params): Promise<AgentToolResult<undefined>> {
-      const bookId = resolveToolBookId("write_truth_file", params.bookId, activeBookId);
-      await tools.writeTruthFile(bookId, params.fileName, params.content);
-      return textResult(`Updated "${params.fileName}" for "${bookId}".`);
+      try {
+        const bookId = resolveToolBookId("write_truth_file", params.bookId, activeBookId);
+        const fileName = assertSafeTruthFileName(params.fileName);
+        await tools.writeTruthFile(bookId, fileName, params.content);
+        return textResult(`Updated "${fileName}" for "${bookId}".`);
+      } catch (err: any) {
+        return textResult(`write_truth_file failed: ${err?.message ?? String(err)}`);
+      }
     },
   };
 }

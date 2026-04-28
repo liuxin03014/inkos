@@ -27,6 +27,7 @@ import {
   restoreAgentMessagesFromTranscript,
 } from "../interaction/session-transcript-restore.js";
 import type { TranscriptEvent, TranscriptRole } from "../interaction/session-transcript-schema.js";
+import { assertSafeBookId } from "../utils/book-id.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,7 +48,7 @@ export interface AgentSessionConfig {
   model: Model<Api> | { provider: string; modelId: string };
   /** Optional API key. When omitted, falls back to env-based key lookup. */
   apiKey?: string;
-  /** Allow the read tool to read absolute paths outside projectRoot/books. Defaults to true; set INKOS_AGENT_ALLOW_SYSTEM_READ=0 to disable. */
+  /** Allow the read tool to read absolute paths outside projectRoot/books. Defaults to false; set INKOS_AGENT_ALLOW_SYSTEM_READ=1 to enable. */
   allowSystemFileRead?: boolean;
   /** Optional listener for streaming events (for SSE forwarding). */
   onEvent?: (event: AgentEvent) => void;
@@ -464,6 +465,30 @@ function agentMessagesToPlain(
 // Main entry point
 // ---------------------------------------------------------------------------
 
+function createAgentToolsForMode(params: {
+  readonly pipeline: PipelineRunner;
+  readonly bookId: string | null;
+  readonly projectRoot: string;
+  readonly allowSystemFileRead: boolean;
+}) {
+  const subAgentTool = createSubAgentTool(params.pipeline, params.bookId, params.projectRoot);
+  if (!params.bookId) {
+    return [subAgentTool];
+  }
+
+  return [
+    subAgentTool,
+    createReadTool(params.projectRoot, { allowSystemPaths: params.allowSystemFileRead }),
+    createWriteTruthFileTool(params.pipeline, params.projectRoot, params.bookId),
+    createRenameEntityTool(params.pipeline, params.projectRoot, params.bookId),
+    createPatchChapterTextTool(params.pipeline, params.projectRoot, params.bookId),
+    createEditTool(params.projectRoot),
+    createWriteFileTool(params.projectRoot),
+    createGrepTool(params.projectRoot),
+    createLsTool(params.projectRoot),
+  ];
+}
+
 /**
  * Run a single conversation turn within a cached Agent session.
  *
@@ -492,10 +517,10 @@ async function runAgentSessionUnlocked(
   // some callers may bypass the type system (e.g. `activeBookId ?? null` gets
   // skipped) and we don't want that to (a) throw in path.join or (b) trigger
   // a spurious cache eviction because `null !== undefined`.
-  const bookId: string | null = config.bookId ?? null;
+  const bookId: string | null = config.bookId ? assertSafeBookId(config.bookId) : null;
   const model = resolveModel(config.model);
   const requestedModelIdentity = agentModelIdentity(model);
-  const allowSystemFileRead = config.allowSystemFileRead ?? envFlagEnabled(process.env.INKOS_AGENT_ALLOW_SYSTEM_READ, true);
+  const allowSystemFileRead = config.allowSystemFileRead ?? envFlagEnabled(process.env.INKOS_AGENT_ALLOW_SYSTEM_READ, false);
   const cacheKey = agentCacheKey(projectRoot, sessionId);
 
   // ----- Resolve or create Agent -----
@@ -544,17 +569,7 @@ async function runAgentSessionUnlocked(
       initialState: {
         model,
         systemPrompt: buildAgentSystemPrompt(bookId, language),
-        tools: [
-          createSubAgentTool(pipeline, bookId, projectRoot),
-          createReadTool(projectRoot, { allowSystemPaths: allowSystemFileRead }),
-          createWriteTruthFileTool(pipeline, projectRoot, bookId),
-          createRenameEntityTool(pipeline, projectRoot, bookId),
-          createPatchChapterTextTool(pipeline, projectRoot, bookId),
-          createEditTool(projectRoot),
-          createWriteFileTool(projectRoot),
-          createGrepTool(projectRoot),
-          createLsTool(projectRoot),
-        ],
+        tools: createAgentToolsForMode({ pipeline, bookId, projectRoot, allowSystemFileRead }),
         messages: initialAgentMessages,
       },
       transformContext: createBookContextTransform(bookId, projectRoot),

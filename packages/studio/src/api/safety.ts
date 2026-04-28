@@ -1,14 +1,6 @@
-// Validates book IDs to prevent path traversal in API requests.
+import { isSafeBookId as isSafeCoreBookId } from "@actalk/inkos-core";
 
-/** Validates bookId — blocks traversal sequences and null bytes. */
+/** Validates bookId for API inputs and filesystem-backed book operations. */
 export function isSafeBookId(bookId: string): boolean {
-  return (
-    typeof bookId === "string"
-    && bookId.length > 0
-    && bookId.trim() === bookId
-    && bookId !== "."
-    && bookId !== ".."
-    && !bookId.includes("..")
-    && !/[\\/\0]/.test(bookId)
-  );
+  return isSafeCoreBookId(bookId);
 }

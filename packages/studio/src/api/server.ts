@@ -1669,6 +1669,35 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         throw new ApiError(404, "SESSION_NOT_FOUND", `Session not found: ${sessionId}`);
       }
       let bookSession = loadedBookSession;
+      if (activeBookId !== undefined && typeof activeBookId !== "string") {
+        throw new ApiError(400, "INVALID_BOOK_ID", "activeBookId must be a string");
+      }
+      const requestedActiveBookId = activeBookId === undefined ? null : activeBookId.trim();
+      if (activeBookId !== undefined && !requestedActiveBookId) {
+        throw new ApiError(400, "INVALID_BOOK_ID", "activeBookId cannot be blank");
+      }
+      if (requestedActiveBookId && !isSafeBookId(requestedActiveBookId)) {
+        throw new ApiError(400, "INVALID_BOOK_ID", `Invalid activeBookId: "${requestedActiveBookId}"`);
+      }
+      if (
+        requestedActiveBookId
+        && bookSession.bookId
+        && bookSession.bookId !== requestedActiveBookId
+      ) {
+        throw new ApiError(
+          409,
+          "SESSION_BOOK_MISMATCH",
+          `Session ${bookSession.sessionId} is bound to ${bookSession.bookId}, not ${requestedActiveBookId}`,
+        );
+      }
+      const agentBookId = requestedActiveBookId ?? bookSession.bookId ?? null;
+      if (agentBookId) {
+        try {
+          await state.loadBookConfig(agentBookId);
+        } catch {
+          throw new ApiError(404, "BOOK_NOT_FOUND", `Book not found: ${agentBookId}`);
+        }
+      }
       const streamSessionId = loadedBookSession.sessionId;
       const titleBeforeRun = bookSession.title;
       let sessionTitleBroadcasted = false;
@@ -1800,7 +1829,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           apiKey: agentApiKey,
           pipeline,
           projectRoot: root,
-          bookId: activeBookId ?? null,
+          bookId: agentBookId,
           sessionId: bookSession.sessionId,
           language: config.language ?? "zh",
           onEvent: (event) => {
@@ -1834,7 +1863,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
                 startedAt: Date.now(),
               });
 
-              if (!activeBookId && event.toolName === "sub_agent" && agent === "architect") {
+              if (!agentBookId && event.toolName === "sub_agent" && agent === "architect") {
                 const bookId = resolveArchitectBookIdFromArgs(args);
                 if (bookId) {
                   const title = typeof args?.title === "string" && args.title.trim()
@@ -1871,7 +1900,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
                 exec.details = (event.result as { details?: unknown } | undefined)?.details;
                 if (
                   event.isError &&
-                  !activeBookId &&
+                  !agentBookId &&
                   exec.tool === "sub_agent" &&
                   exec.agent === "architect"
                 ) {
@@ -1898,7 +1927,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
       let broadcastedCreatedBookId: string | null = null;
       const finalizeCreatedBook = async (): Promise<string | null> => {
-        if (activeBookId) return null;
+        if (agentBookId) return null;
         const createdBookId = resolveCreatedBookIdFromToolExecs(collectedToolExecs);
         if (!createdBookId) return null;
         if (broadcastedCreatedBookId === createdBookId) return createdBookId;
@@ -1950,7 +1979,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             fallbackClient,
             reqModel ?? config.llm.model,
             [
-              { role: "system", content: buildAgentSystemPrompt(activeBookId ?? null, config.language ?? "zh") },
+              { role: "system", content: buildAgentSystemPrompt(agentBookId, config.language ?? "zh") },
               { role: "user", content: instruction },
             ],
             { maxTokens: 256 },
