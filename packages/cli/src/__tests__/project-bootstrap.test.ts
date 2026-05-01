@@ -42,7 +42,24 @@ describe("project bootstrap", () => {
     await ensureProjectDirectoryInitialized(tempDir, { language: "zh" });
 
     await expect(readFile(join(tempDir, ".env"), "utf-8")).resolves.toBe("EXISTING=1\n");
-    await expect(readFile(join(tempDir, ".gitignore"), "utf-8")).resolves.toBe("CUSTOM\n");
+    const gitignore = await readFile(join(tempDir, ".gitignore"), "utf-8");
+    expect(gitignore).toContain("CUSTOM\n");
+    expect(gitignore).toContain(".env\n");
+    expect(gitignore).toContain("node_modules/\n");
+    expect(gitignore).toContain(".DS_Store\n");
+  });
+
+  it("preserves an existing .gitignore when explicitly initializing", async () => {
+    await writeFile(join(tempDir, ".gitignore"), "dist/\n# keep me\n", "utf-8");
+
+    const { initializeProjectDirectory } = await import("../project-bootstrap.js");
+    await initializeProjectDirectory(tempDir, { language: "zh" });
+
+    const gitignore = await readFile(join(tempDir, ".gitignore"), "utf-8");
+    expect(gitignore).toContain("dist/\n# keep me\n");
+    expect(gitignore).toContain(".env\n");
+    expect(gitignore).toContain("node_modules/\n");
+    expect(gitignore).toContain(".DS_Store\n");
   });
 
   it("returns false when the directory is already an InkOS project", async () => {

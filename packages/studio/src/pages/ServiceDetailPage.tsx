@@ -191,6 +191,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         setStatus(result.status);
       } else {
         setStatus(result.status);
+        if (result.status.state === "error") return;
       }
       await refreshServices();
       nav.toServices();

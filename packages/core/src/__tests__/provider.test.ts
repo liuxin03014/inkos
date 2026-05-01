@@ -288,6 +288,117 @@ describe("chatCompletion via pi-ai", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uses reasoning_content for custom openai-compatible non-stream responses that omit content", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { reasoning_content: "推理通道文本" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = makeClient(0.7, {
+      service: "custom",
+      stream: false,
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "openai",
+        baseUrl: "https://gateway.example/v1",
+      },
+    });
+    const result = await chatCompletion(client, "glm-compat", [{ role: "user", content: "nihao" }]);
+
+    expect(result.content).toBe("推理通道文本");
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("uses reasoning_content for custom openai-compatible streams that omit content deltas", async () => {
+    const encoder = new TextEncoder();
+    const sse = [
+      "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"你\"}}]}\n\n",
+      "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"好\"}}]}\n\n",
+      "data: {\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n",
+      "data: [DONE]\n\n",
+    ].join("");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(sse));
+          controller.close();
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = makeClient(0.7, {
+      service: "custom",
+      stream: true,
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "openai",
+        baseUrl: "https://gateway.example/v1",
+      },
+    });
+    const result = await chatCompletion(client, "glm-compat", [{ role: "user", content: "nihao" }]);
+
+    expect(result.content).toBe("你好");
+    expect(result.usage.totalTokens).toBe(5);
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("retries custom openai-compatible chat by folding system messages into user when system role is unsupported", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: async () => JSON.stringify({ error: { message: "role system is unsupported" } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: "ok" } }],
+          usage: { prompt_tokens: 9, completion_tokens: 1, total_tokens: 10 },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = makeClient(0.7, {
+      service: "custom",
+      stream: false,
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "openai",
+        baseUrl: "https://gateway.example/v1",
+      },
+    });
+    const result = await chatCompletion(client, "wild-compatible", [
+      { role: "system", content: "只输出中文。" },
+      { role: "user", content: "ping" },
+    ]);
+
+    expect(result.content).toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(firstBody.messages).toEqual([
+      { role: "system", content: "只输出中文。" },
+      { role: "user", content: "ping" },
+    ]);
+    expect(secondBody.messages).toHaveLength(1);
+    expect(secondBody.messages[0]).toMatchObject({ role: "user" });
+    expect(secondBody.messages[0].content).toContain("只输出中文。");
+    expect(secondBody.messages[0].content).toContain("ping");
+
+    vi.unstubAllGlobals();
+  });
+
   it("keeps legacy env custom openai-compatible chat on pi-ai path", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

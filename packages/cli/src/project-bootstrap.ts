@@ -32,6 +32,33 @@ async function writeMaybe(path: string, content: string, overwrite: boolean): Pr
   await writeFile(path, content, "utf-8");
 }
 
+const DEFAULT_GITIGNORE_ENTRIES = [".env", "node_modules/", ".DS_Store"] as const;
+
+export async function ensureProjectGitignore(projectDir: string): Promise<void> {
+  const path = join(projectDir, ".gitignore");
+  let existing = "";
+  if (await exists(path)) {
+    existing = await readFile(path, "utf-8");
+  }
+
+  const existingEntries = new Set(
+    existing
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith("#")),
+  );
+  const missing = DEFAULT_GITIGNORE_ENTRIES.filter((entry) => !existingEntries.has(entry));
+  if (missing.length === 0) return;
+
+  if (!existing) {
+    await writeFile(path, `${missing.join("\n")}\n`, "utf-8");
+    return;
+  }
+
+  const separator = existing.endsWith("\n") ? "" : "\n";
+  await writeFile(path, `${existing}${separator}${missing.join("\n")}\n`, "utf-8");
+}
+
 function buildProjectConfig(projectDir: string, language: "zh" | "en") {
   return {
     name: basename(projectDir),
@@ -119,7 +146,7 @@ export async function initializeProjectDirectory(
 
   await Promise.all([
     writeMaybe(join(projectDir, ".env"), buildProjectEnvTemplate(globalConfigured), overwriteSupportFiles),
-    writeMaybe(join(projectDir, ".gitignore"), [".env", "node_modules/", ".DS_Store"].join("\n"), overwriteSupportFiles),
+    ensureProjectGitignore(projectDir),
     writeMaybe(join(projectDir, ".nvmrc"), "22\n", overwriteSupportFiles),
     writeMaybe(join(projectDir, ".node-version"), "22\n", overwriteSupportFiles),
   ]);

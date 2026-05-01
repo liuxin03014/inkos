@@ -444,6 +444,38 @@ function buildResponsesInput(messages: ReadonlyArray<LLMMessage>): Array<{ role:
     }));
 }
 
+function hasSystemMessages(messages: ReadonlyArray<LLMMessage>): boolean {
+  return messages.some((message) => message.role === "system" && message.content.trim().length > 0);
+}
+
+function foldSystemMessagesIntoFirstUser(messages: ReadonlyArray<LLMMessage>): LLMMessage[] {
+  const system = joinSystemPrompt(messages);
+  const nonSystemMessages = messages.filter((message) => message.role !== "system");
+  if (!system) return [...nonSystemMessages];
+
+  const firstUserIndex = nonSystemMessages.findIndex((message) => message.role === "user");
+  const prefix = `System instructions:\n${system}\n\nUser request:\n`;
+  if (firstUserIndex < 0) {
+    return [{ role: "user", content: `System instructions:\n${system}` }, ...nonSystemMessages];
+  }
+
+  return nonSystemMessages.map((message, index) => index === firstUserIndex
+    ? { ...message, content: `${prefix}${message.content}` }
+    : message);
+}
+
+function isSystemRoleUnsupportedErrorText(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const mentionsSystemRole = normalized.includes("system") && normalized.includes("role");
+  if (!mentionsSystemRole) return false;
+  return normalized.includes("unsupported")
+    || normalized.includes("not support")
+    || normalized.includes("does not support")
+    || normalized.includes("invalid")
+    || normalized.includes("不支持")
+    || normalized.includes("不允许");
+}
+
 async function readErrorResponse(res: Response): Promise<string> {
   const text = await res.text().catch(() => "");
   try {
@@ -491,15 +523,27 @@ function parseSseEvents(buffer: string): { readonly events: ParsedSseEvent[]; re
   return { events, rest };
 }
 
-function extractChatContent(json: any): string {
-  const content = json?.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
+function extractOpenAITextPart(value: any): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
       .map((item) => typeof item?.text === "string" ? item.text : typeof item?.content === "string" ? item.content : "")
       .join("");
   }
   return "";
+}
+
+function extractChatContent(json: any): string {
+  const message = json?.choices?.[0]?.message;
+  return extractOpenAITextPart(message?.content) || extractOpenAITextPart(message?.reasoning_content);
+}
+
+function extractChatDeltaContent(json: any): string {
+  return extractOpenAITextPart(json?.choices?.[0]?.delta?.content);
+}
+
+function extractChatDeltaReasoningContent(json: any): string {
+  return extractOpenAITextPart(json?.choices?.[0]?.delta?.reasoning_content);
 }
 
 function extractResponsesContent(json: any): string {
@@ -631,6 +675,7 @@ async function chatCompletionViaCustomOpenAICompatible(
   resolved: { readonly temperature: number; readonly maxTokens: number; readonly extra: Record<string, unknown> },
   onStreamProgress?: OnStreamProgress,
   onTextDelta?: (text: string) => void,
+  allowSystemRoleFallback = true,
 ): Promise<LLMResponse> {
   if (client.provider === "anthropic") {
     return chatCompletionViaCustomAnthropicCompatible(client, model, messages, resolved, onStreamProgress, onTextDelta);
@@ -746,7 +791,19 @@ async function chatCompletionViaCustomOpenAICompatible(
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
+    const detail = await readErrorResponse(response);
+    if (allowSystemRoleFallback && hasSystemMessages(messages) && isSystemRoleUnsupportedErrorText(detail)) {
+      return chatCompletionViaCustomOpenAICompatible(
+        client,
+        model,
+        foldSystemMessagesIntoFirstUser(messages),
+        resolved,
+        onStreamProgress,
+        onTextDelta,
+        false,
+      );
+    }
+    throw wrapLLMError(new Error(detail), errorCtx);
   }
 
   if (!client.stream) {
@@ -770,6 +827,7 @@ async function chatCompletionViaCustomOpenAICompatible(
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
+  let reasoningContent = "";
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   try {
@@ -782,11 +840,17 @@ async function chatCompletionViaCustomOpenAICompatible(
       for (const event of parsed.events) {
         if (!event.data || event.data === "[DONE]") continue;
         const json = JSON.parse(event.data);
-        const delta = json?.choices?.[0]?.delta?.content;
-        if (typeof delta === "string") {
+        const delta = extractChatDeltaContent(json);
+        if (delta) {
           content += delta;
           monitor.onChunk(delta);
           onTextDelta?.(delta);
+        } else {
+          const reasoningDelta = extractChatDeltaReasoningContent(json);
+          if (reasoningDelta) {
+            reasoningContent += reasoningDelta;
+            monitor.onChunk(reasoningDelta);
+          }
         }
         if (json?.usage) {
           usage = {
@@ -801,10 +865,11 @@ async function chatCompletionViaCustomOpenAICompatible(
     monitor.stop();
   }
 
-  if (!content) {
+  const finalContent = content || reasoningContent;
+  if (!finalContent) {
     throw wrapLLMError(new Error("LLM returned empty response from stream"), errorCtx);
   }
-  return { content, usage };
+  return { content: finalContent, usage };
 }
 
 // === Simple Chat (used by all agents via BaseAgent.chat()) ===

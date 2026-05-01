@@ -53,12 +53,20 @@ describe("matchServiceConfigEntryForDetail", () => {
 });
 
 describe("saveServiceConfig", () => {
-  it("persists secrets/config without probing the upstream service", async () => {
+  it("validates the upstream service before persisting secrets/config", async () => {
     const calls: string[] = [];
     const bodies: unknown[] = [];
     const fetchJsonImpl = vi.fn(async (path: string, init?: { body?: string }) => {
       calls.push(path);
       if (init?.body) bodies.push(JSON.parse(init.body));
+      if (path === "/services/openai/test") {
+        return {
+          ok: true,
+          models: [{ id: "gpt-5.5" }],
+          selectedModel: "gpt-5.5",
+          detected: { apiFormat: "chat", stream: true },
+        };
+      }
       if (path === "/services/openai/secret") return { ok: true };
       if (path === "/services/config") return { ok: true };
       throw new Error(`unexpected path: ${path}`);
@@ -79,31 +87,40 @@ describe("saveServiceConfig", () => {
     });
 
     expect(calls).toEqual([
+      "/services/openai/test",
       "/services/openai/secret",
       "/services/config",
     ]);
     expect(bodies).toEqual([
+      { apiKey: "sk-live", apiFormat: "chat", stream: true },
       { apiKey: "sk-live" },
       {
         service: "openai",
+        defaultModel: "gpt-5.5",
         services: [
           { service: "openai", temperature: 0.7, apiFormat: "chat", stream: true },
         ],
       },
     ]);
     expect(result).toEqual({
-      detectedModel: "",
-      detectedConfig: null,
-      status: { state: "saved" },
+      detectedModel: "gpt-5.5",
+      detectedConfig: { apiFormat: "chat", stream: true },
+      status: { state: "connected", models: [{ id: "gpt-5.5" }] },
     });
   });
 
-  it("still persists secrets/config when the key has not been manually tested", async () => {
+  it("does not persist secrets/config when validation fails", async () => {
     const calls: string[] = [];
-    const fetchJsonImpl = vi.fn(async (path: string) => {
+    const fetchJsonImpl = vi.fn(async (path: string, init?: { body?: string }) => {
       calls.push(path);
-      if (path === "/services/openai/secret") return { ok: true };
-      if (path === "/services/config") return { ok: true };
+      if (path === "/services/openai/test") {
+        expect(init?.body ? JSON.parse(init.body) : null).toEqual({
+          apiKey: "sk-bad",
+          apiFormat: "chat",
+          stream: true,
+        });
+        return { ok: false, error: "invalid key" };
+      }
       throw new Error(`unexpected path: ${path}`);
     });
 
@@ -119,11 +136,12 @@ describe("saveServiceConfig", () => {
       temperature: "0.7",
       detectedModel: "",
       fetchJsonImpl: fetchJsonImpl as never,
-    })).resolves.toMatchObject({ status: { state: "saved" } });
+    })).resolves.toEqual({
+      detectedModel: "",
+      detectedConfig: null,
+      status: { state: "error", message: "invalid key" },
+    });
 
-    expect(calls).toEqual([
-      "/services/openai/secret",
-      "/services/config",
-    ]);
+    expect(calls).toEqual(["/services/openai/test"]);
   });
 });
