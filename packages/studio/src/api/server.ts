@@ -1272,6 +1272,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const envConfig = await readEnvConfigStatus(root);
     return c.json({
       services,
+      service: typeof llm.service === "string" ? llm.service : null,
       defaultModel: llm.defaultModel ?? null,
       configSource: "studio" satisfies LLMConfigSource,
       storedConfigSource: normalizeConfigSource(llm.configSource),

@@ -954,6 +954,30 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(raw.llm.defaultModel).toBe("kimi-k2.5");
   });
 
+  it("returns the saved default service and model for Studio chat selection", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        services: [
+          { service: "google", temperature: 1 },
+          { service: "moonshot", temperature: 0.7 },
+        ],
+        service: "moonshot",
+        defaultModel: "kimi-k2.5",
+      },
+    }, null, 2), "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/services/config");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      service: "moonshot",
+      defaultModel: "kimi-k2.5",
+    });
+  });
+
   it("rejects switching Studio runtime to env config source", async () => {
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);
