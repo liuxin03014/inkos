@@ -205,6 +205,18 @@ describe("chatCompletion via pi-ai", () => {
     expect(error.message).toContain("无法连接到 API 服务");
   });
 
+  it("retries transient socket termination errors before failing the chapter pipeline", async () => {
+    mockStreamSimple
+      .mockReturnValueOnce(makeErrorStream("terminated: UND_ERR_SOCKET other side closed"))
+      .mockReturnValueOnce(makeTextStream("recovered"));
+
+    const client = makeClient();
+    const result = await chatCompletion(client, "test-model", [{ role: "user", content: "ping" }]);
+
+    expect(result.content).toBe("recovered");
+    expect(mockStreamSimple).toHaveBeenCalledTimes(2);
+  });
+
   it("passes temperature and maxTokens to streamSimple", async () => {
     mockStreamSimple.mockReturnValue(makeTextStream("ok"));
 
