@@ -1789,7 +1789,7 @@ describe("createStudioServer daemon lifecycle", () => {
       return {
         responseText: "Completed write_next for demo-book.",
         messages: [
-          { role: "user", content: "continue" },
+          { role: "user", content: "检查当前状态" },
           { role: "assistant", content: "Completed write_next for demo-book." },
         ],
       };
@@ -1801,7 +1801,7 @@ describe("createStudioServer daemon lifecycle", () => {
     const response = await app.request("http://localhost/api/v1/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction: "continue", activeBookId: "demo-book", sessionId: "agent-session-1" }),
+      body: JSON.stringify({ instruction: "检查当前状态", activeBookId: "demo-book", sessionId: "agent-session-1" }),
     });
 
     expect(response.status).toBe(200);
@@ -1816,19 +1816,11 @@ describe("createStudioServer daemon lifecycle", () => {
         bookId: "demo-book",
         projectRoot: root,
       }),
-      "continue",
+      "检查当前状态",
     );
   });
 
-  it("rejects text-only write-next agent responses that never executed the writer tool", async () => {
-    runAgentSessionMock.mockResolvedValueOnce({
-      responseText: "已为 demo-book 完成下一章写作。",
-      messages: [
-        { role: "user", content: "继续" },
-        { role: "assistant", content: "已为 demo-book 完成下一章写作。" },
-      ],
-    });
-
+  it("routes write-next button instructions directly to the shared writer pipeline", async () => {
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);
 
@@ -1838,13 +1830,22 @@ describe("createStudioServer daemon lifecycle", () => {
       body: JSON.stringify({ instruction: "继续", activeBookId: "demo-book", sessionId: "agent-session-1" }),
     });
 
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: "AGENT_ACTION_NOT_EXECUTED",
+      response: expect.stringContaining("已为 demo-book 完成第 3 章"),
+      session: {
+        sessionId: "agent-session-1",
+        activeBookId: "demo-book",
       },
-      response: expect.stringContaining("没有实际调用写作工具"),
     });
+    expect(writeNextChapterMock).toHaveBeenCalledWith("demo-book");
+    expect(runAgentSessionMock).not.toHaveBeenCalled();
+    expect(appendManualSessionMessagesMock).toHaveBeenCalledWith(
+      root,
+      "agent-session-1",
+      expect.any(Array),
+      "继续",
+    );
   });
 
   it("rejects unsafe activeBookId in the Studio agent API", async () => {
@@ -1924,7 +1925,7 @@ describe("createStudioServer daemon lifecycle", () => {
     const response = await app.request("http://localhost/api/v1/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction: "continue", sessionId: "agent-session-1" }),
+      body: JSON.stringify({ instruction: "检查当前状态", sessionId: "agent-session-1" }),
     });
 
     expect(response.status).toBe(200);
@@ -1977,7 +1978,7 @@ describe("createStudioServer daemon lifecycle", () => {
     const response = await app.request("http://localhost/api/v1/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction: "continue", activeBookId: "demo-book", sessionId: "agent-session-1" }),
+      body: JSON.stringify({ instruction: "检查当前状态", activeBookId: "demo-book", sessionId: "agent-session-1" }),
     });
 
     expect(response.status).toBe(200);
@@ -1989,7 +1990,7 @@ describe("createStudioServer daemon lifecycle", () => {
     runAgentSessionMock.mockResolvedValueOnce({
       responseText: "Agent response.",
       messages: [
-        { role: "user", content: "continue", timestamp: 1 },
+        { role: "user", content: "检查当前状态", timestamp: 1 },
         { role: "assistant", content: [{ type: "text", text: "Agent response." }], timestamp: 2 },
       ],
     });
@@ -2007,9 +2008,9 @@ describe("createStudioServer daemon lifecycle", () => {
       .mockResolvedValueOnce({
         sessionId: "agent-session-1",
         bookId: "demo-book",
-        title: "continue",
+        title: "检查当前状态",
         messages: [
-          { role: "user", content: "continue", timestamp: 1 },
+          { role: "user", content: "检查当前状态", timestamp: 1 },
           { role: "assistant", content: "Agent response.", timestamp: 2 },
         ],
         events: [],
@@ -2024,7 +2025,7 @@ describe("createStudioServer daemon lifecycle", () => {
     const response = await app.request("http://localhost/api/v1/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction: "continue", activeBookId: "demo-book", sessionId: "agent-session-1" }),
+      body: JSON.stringify({ instruction: "检查当前状态", activeBookId: "demo-book", sessionId: "agent-session-1" }),
     });
 
     expect(response.status).toBe(200);
@@ -2032,7 +2033,7 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(persistBookSessionMock).not.toHaveBeenCalled();
     expect(runAgentSessionMock).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "agent-session-1" }),
-      "continue",
+      "检查当前状态",
     );
     expect(loadBookSessionMock).toHaveBeenCalledTimes(2);
   });
@@ -2134,7 +2135,7 @@ describe("createStudioServer daemon lifecycle", () => {
     const response = await app.request("http://localhost/api/v1/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction: "continue", activeBookId: "demo-book", sessionId: "agent-session-1" }),
+      body: JSON.stringify({ instruction: "检查当前状态", activeBookId: "demo-book", sessionId: "agent-session-1" }),
     });
 
     expect(response.status).toBe(500);

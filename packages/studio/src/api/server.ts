@@ -1896,6 +1896,86 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         sessionIdForSSE: bookSession.sessionId,
       }));
 
+      if (agentBookId && isWriteNextInstruction(instruction)) {
+        const toolCallId = `direct-writer-${Date.now().toString(36)}`;
+        const toolArgs = { agent: "writer", bookId: agentBookId };
+        broadcast("tool:start", {
+          sessionId: streamSessionId,
+          id: toolCallId,
+          tool: "sub_agent",
+          args: toolArgs,
+          stages: PIPELINE_STAGES.writer,
+        });
+
+        try {
+          const writeResult = await pipeline.writeNextChapter(agentBookId);
+          const responseText = [
+            `已为 ${agentBookId} 完成第 ${writeResult.chapterNumber} 章`,
+            writeResult.title ? `《${writeResult.title}》` : "",
+            `，字数 ${writeResult.wordCount}，状态 ${writeResult.status}。`,
+          ].join("");
+          const toolResult = {
+            content: [{ type: "text", text: responseText }],
+            details: {
+              kind: "chapter_written",
+              bookId: agentBookId,
+              chapterNumber: writeResult.chapterNumber,
+              title: writeResult.title,
+              wordCount: writeResult.wordCount,
+              status: writeResult.status,
+            },
+          };
+          broadcast("tool:end", {
+            sessionId: streamSessionId,
+            id: toolCallId,
+            tool: "sub_agent",
+            result: toolResult,
+            isError: false,
+          });
+          await appendManualSessionMessages(root, bookSession.sessionId, [{
+            role: "assistant",
+            content: [{ type: "text", text: responseText }],
+            api: "anthropic-messages",
+            provider: configuredEntry?.service ?? reqService ?? config.llm.provider,
+            model: reqModel ?? config.llm.model,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "toolUse",
+            timestamp: Date.now(),
+          }], instruction);
+          await refreshBookSessionFromTranscript();
+          broadcast("agent:complete", { instruction, activeBookId: agentBookId, sessionId: bookSession.sessionId });
+          return c.json({
+            response: responseText,
+            session: {
+              sessionId: bookSession.sessionId,
+              activeBookId: agentBookId,
+            },
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const toolResult = { content: [{ type: "text", text: message }] };
+          broadcast("tool:end", {
+            sessionId: streamSessionId,
+            id: toolCallId,
+            tool: "sub_agent",
+            result: toolResult,
+            isError: true,
+          });
+          broadcast("agent:error", { instruction, activeBookId: agentBookId, sessionId: bookSession.sessionId, error: message });
+          return c.json({
+            error: { code: "AGENT_ACTION_FAILED", message },
+            response: message,
+          }, 502);
+        }
+      }
+
       // Run pi-agent session
       const collectedToolExecs: CollectedToolExec[] = [];
       const result = await runAgentSession(
