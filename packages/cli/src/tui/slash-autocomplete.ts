@@ -1,12 +1,7 @@
 export const SLASH_COMMANDS = [
   "/new 输入你的想法",
-  "/draft",
-  "/create",
-  "/discard",
   "/write",
   "/books",
-  "/open <book>",
-  "/mode <auto|semi|manual>",
   "/rewrite <n>",
   "/focus <text>",
   "/truth <file> <content>",

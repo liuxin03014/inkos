@@ -3,7 +3,7 @@ import {
   processProjectInteractionInput,
   type InteractionRuntimeTools,
 } from "@actalk/inkos-core";
-import { createInteractionTools } from "../tui/tools.js";
+import { createInteractionTools } from "../interaction/tools.js";
 
 export interface InteractCommandHooks {
   readonly runInteraction?: (params: {

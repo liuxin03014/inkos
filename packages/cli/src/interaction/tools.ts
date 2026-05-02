@@ -25,7 +25,7 @@ export function createCliInteractionToolsFromDeps(
   return createInteractionToolsFromDeps(pipeline, state, hooks);
 }
 
-// Backward-compatible export for the current CLI tests during the extraction phase.
+// Backward-compatible export for existing CLI interaction tests.
 export function createInteractionToolsFromDepsCompat(
   _projectRoot: string,
   pipeline: CliPipelineLike,

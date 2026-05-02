@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   appendInteractionMessage,
-  processProjectInteractionInput,
   routeNaturalLanguageIntent,
   type InteractionIntentType,
-  type InteractionRuntimeTools,
   type InteractionSession,
 } from "@actalk/inkos-core";
 import { Box, Text, useApp, useInput } from "ink";
@@ -15,7 +13,6 @@ import { resolveChatDepthProfile, type ChatDepth } from "./chat-depth.js";
 import { appendStreamingAssistantChunk, createOptimisticUserMessageSession } from "./chat-draft.js";
 import { renderComposerDisplay } from "./composer-display.js";
 import { renderMarkdown } from "./markdown.js";
-import { formatTuiResult } from "./output.js";
 import { buildDashboardViewModel, type DashboardMessageRow } from "./dashboard-model.js";
 import { buildInputHistory, moveHistoryCursor } from "./input-history.js";
 import { formatModeLabel, getTuiCopy, normalizeStageLabel, type TuiLocale } from "./i18n.js";
@@ -33,20 +30,6 @@ import {
   ROLE_USER, ROLE_SYSTEM,
   isAppleTerminal,
 } from "./theme.js";
-
-function shouldUseLegacyTuiInteraction(intent: InteractionIntentType): boolean {
-  switch (intent) {
-    case "list_books":
-    case "show_book_draft":
-    case "discard_book_draft":
-    case "select_book":
-    case "pause_book":
-    case "switch_mode":
-      return true;
-    default:
-      return false;
-  }
-}
 
 export interface InkTuiDashboardProps {
   readonly locale: TuiLocale;
@@ -73,7 +56,6 @@ export interface InkTuiAppProps {
   readonly projectName: string;
   readonly modelLabel: string;
   readonly initialSession: InteractionSession;
-  readonly tools: InteractionRuntimeTools;
   readonly chatStreamBridge?: {
     onTextDelta?: (text: string) => void;
     getChatRequestOptions?: () => {
@@ -373,8 +355,7 @@ export function InkTuiApp(props: InkTuiAppProps): React.JSX.Element {
         hasFailed: session.currentExecution?.status === "failed",
       });
       const userTimestamp = Date.now();
-      const assistantDraftTimestamp = (routed.intent === "chat" || routed.intent === "develop_book")
-        ? userTimestamp + 1 : null;
+      const assistantDraftTimestamp = userTimestamp + 1;
       assistantDraftTimestampRef.current = assistantDraftTimestamp;
       setActivityIntent(routed.intent);
       setIsSubmitting(true);
@@ -388,40 +369,16 @@ export function InkTuiApp(props: InkTuiAppProps): React.JSX.Element {
         appendSystemNote(copy.notes.newBookGuide);
       }
 
-      if (shouldUseLegacyTuiInteraction(routed.intent)) {
-        const result = await processProjectInteractionInput({
-          projectRoot: props.projectRoot,
-          input,
-          tools: props.tools,
-          activeBookId,
-        });
-        const summary = formatTuiResult({
-          intent: result.request.intent,
-          status: result.session.currentExecution?.status ?? "completed",
-          bookId: result.session.activeBookId,
-          mode: result.request.mode,
-          responseText: result.responseText,
-          locale: props.locale,
-        });
-        const nextSession = appendInteractionMessage(result.session, {
-          role: "assistant",
-          content: summary,
-          timestamp: Date.now(),
-        });
-        await persistProjectSession(props.projectRoot, nextSession);
-        setSession(nextSession);
-      } else {
-        const result = await processTuiAgentInput({
-          projectRoot: props.projectRoot,
-          input,
-          session,
-          activeBookId,
-          onTextDelta: (text) => {
-            props.chatStreamBridge?.onTextDelta?.(text);
-          },
-        });
-        setSession(result.session);
-      }
+      const result = await processTuiAgentInput({
+        projectRoot: props.projectRoot,
+        input,
+        session,
+        activeBookId,
+        onTextDelta: (text) => {
+          props.chatStreamBridge?.onTextDelta?.(text);
+        },
+      });
+      setSession(result.session);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const failedSession = await loadProjectSession(props.projectRoot);

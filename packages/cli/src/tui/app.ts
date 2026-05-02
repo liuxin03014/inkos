@@ -1,18 +1,11 @@
 import { access } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import {
-  appendInteractionMessage,
-  processProjectInteractionInput,
-  type InteractionRuntimeTools,
-} from "@actalk/inkos-core";
 import { render } from "ink";
 import React from "react";
 import { InkTuiApp } from "./dashboard.js";
 import { formatModeLabel, getTuiCopy, normalizeStageLabel, resolveTuiLocale, type TuiLocale } from "./i18n.js";
-import { formatTuiResult } from "./output.js";
-import { loadProjectSession, persistProjectSession } from "./session-store.js";
+import { loadProjectSession } from "./session-store.js";
 import { detectModelInfo, detectProjectLanguage, ensureProject, interactiveLlmSetup } from "./setup.js";
-import { createInteractionTools } from "./tools.js";
 import { animateStartup } from "./effects.js";
 
 export interface TuiFrameState {
@@ -61,35 +54,6 @@ async function readVersion(): Promise<string> {
   }
 }
 
-export async function processTuiInput(
-  projectRoot: string,
-  input: string,
-  tools: InteractionRuntimeTools,
-) {
-  const projectLanguage = await detectProjectLanguage(projectRoot);
-  const locale = resolveTuiLocale(process.env, projectLanguage);
-  const result = await processProjectInteractionInput({
-    projectRoot,
-    input,
-    tools,
-  });
-  const summary = formatTuiResult({
-    intent: result.request.intent,
-    status: result.session.currentExecution?.status ?? "completed",
-    bookId: result.session.activeBookId,
-    mode: result.request.mode,
-    responseText: result.responseText,
-    locale,
-  });
-  const nextSession = appendInteractionMessage(result.session, {
-    role: "assistant",
-    content: summary,
-    timestamp: Date.now(),
-  });
-  await persistProjectSession(projectRoot, nextSession);
-  return { ...result, session: nextSession };
-}
-
 async function resolveProjectRoot(cwd: string): Promise<string> {
   // If CWD is a book directory (contains book.json), walk up to the actual project root.
   // Structure: <projectRoot>/books/<bookId>/book.json
@@ -107,7 +71,6 @@ async function resolveProjectRoot(cwd: string): Promise<string> {
 
 export async function launchTui(
   projectRoot: string,
-  toolsOverride?: InteractionRuntimeTools,
 ): Promise<void> {
   projectRoot = await resolveProjectRoot(projectRoot);
   const { hasLlmConfig } = await ensureProject(projectRoot);
@@ -134,23 +97,6 @@ export async function launchTui(
   const version = await readVersion();
   const chatStreamBridge: { onTextDelta?: (text: string) => void } = {};
 
-  let tools: InteractionRuntimeTools;
-  try {
-    tools = toolsOverride ?? (await createInteractionTools(projectRoot, {
-      onChatTextDelta: (text) => {
-        chatStreamBridge.onTextDelta?.(text);
-      },
-      onDraftTextDelta: (text) => {
-        chatStreamBridge.onTextDelta?.(text);
-      },
-    }));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(copy.notes.toolInitFailed(message));
-    console.error(copy.notes.toolInitHint);
-    return;
-  }
-
   const originalEmitWarning = process.emitWarning;
   process.emitWarning = (() => {}) as typeof process.emitWarning;
   const originalStderrWrite = process.stderr.write.bind(process.stderr);
@@ -172,7 +118,6 @@ export async function launchTui(
         projectName: basename(projectRoot),
         modelLabel,
         initialSession: session,
-        tools,
         chatStreamBridge,
       }),
       { exitOnCtrlC: true },

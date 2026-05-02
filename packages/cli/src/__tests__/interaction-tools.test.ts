@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { createInteractionToolsFromDeps } from "../tui/tools.js";
+import { createInteractionToolsFromDeps } from "../interaction/tools.js";
 
 const chapterResult = {
   chapterNumber: 1,

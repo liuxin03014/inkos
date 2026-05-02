@@ -39,8 +39,6 @@ export interface TuiCopy {
     readonly newBookGuide: string;
     readonly noLlmConfig: string;
     readonly setupProvider: string;
-    readonly toolInitFailed: (message: string) => string;
-    readonly toolInitHint: string;
   };
   readonly roles: {
     readonly user: string;
@@ -57,13 +55,6 @@ export interface TuiCopy {
     readonly readyToContinue: string;
   };
   readonly depthLabels: Record<ChatDepth, string>;
-  readonly results: {
-    readonly modeSwitched: (mode: string) => string;
-    readonly booksListed: string;
-    readonly activeBook: (bookId: string) => string;
-    readonly completed: (intent: string) => string;
-    readonly intentLabels: Partial<Record<string, string>>;
-  };
 }
 
 const ZH_CN: TuiCopy = {
@@ -94,21 +85,19 @@ const ZH_CN: TuiCopy = {
   composer: {
     placeholder: "告诉 InkOS 要写什么、修改什么，或解释什么…",
     emptyConversation: "先告诉 InkOS 你要做什么。",
-    helper: "回车发送 • /new 输入你的想法，自动构建新书 • /draft • /create • /write • /books • /open • /mode • /depth • /help",
+    helper: "回车发送 • /new 输入你的想法 • /write • /rewrite • /truth • /export • /depth • /help",
     submitting: "处理中…",
     failed: "上次请求失败",
     ready: "就绪",
   },
   notes: {
-    help: "可用命令：/new（输入想法，自动构建新书）、/draft、/create、/discard、/write、/books、/open、/mode、/rewrite、/focus、/truth、/rename、/replace、/export、/status、/clear、/depth、/quit。也支持直接输入自然语言。",
+    help: "可用命令：/new（输入想法）、/write、/books、/rewrite、/focus、/truth、/rename、/replace、/export、/status、/clear、/depth、/quit。其他写作和项目操作直接用自然语言交给 agent。",
     status: (stage, mode) => `当前状态：${stage}（${mode}）。`,
     config: "当前 Ink 仪表盘里还不支持交互式 /config。请使用 inkos config set-global。",
     depthSet: (depthLabel) => `思考深度已切换为 ${depthLabel}。`,
-    newBookGuide: "开始构思新书。直接描述你的想法——题材、世界观、主角、核心冲突都可以。AI 会逐步引导你完善草案，随时用 /draft 查看进度，/create 建书。",
+    newBookGuide: "开始构思新书。直接描述你的想法——题材、世界观、主角、核心冲突都可以。AI 会逐步引导，信息足够时会直接调用建书能力。",
     noLlmConfig: "未发现 LLM 配置。",
     setupProvider: "先配置 API 提供方。",
-    toolInitFailed: (message) => `初始化 TUI 工具失败：${message}`,
-    toolInitHint: "请检查 .env，或运行：inkos config set-global",
   },
   roles: {
     user: "你",
@@ -134,24 +123,6 @@ const ZH_CN: TuiCopy = {
     light: "轻量",
     normal: "标准",
     deep: "深入",
-  },
-  results: {
-    modeSwitched: (mode) => `已切换到 ${mode} 模式。`,
-    booksListed: "已列出作品。",
-    activeBook: (bookId) => `当前作品：${bookId}`,
-    completed: (intent) => `已完成 ${intent}`,
-    intentLabels: {
-      write_next: "已写完下一章",
-      revise_chapter: "已修订章节",
-      rewrite_chapter: "已重写章节",
-      update_focus: "已更新焦点",
-      explain_status: "状态说明",
-      explain_failure: "失败说明",
-      pause_book: "已暂停作品",
-      rename_entity: "已重命名实体",
-      patch_chapter_text: "已修补正文",
-      edit_truth: "已更新真相文件",
-    },
   },
 };
 
@@ -183,21 +154,19 @@ const EN: TuiCopy = {
   composer: {
     placeholder: "Ask InkOS to write, revise, or explain…",
     emptyConversation: "Start by asking InkOS what to do.",
-    helper: "Enter to send • /new describe your idea to start a book • /draft • /create • /write • /books • /open • /mode • /depth • /help",
+    helper: "Enter to send • /new describe your idea • /write • /rewrite • /truth • /export • /depth • /help",
     submitting: "Submitting…",
     failed: "Last request failed",
     ready: "Ready",
   },
   notes: {
-    help: "Commands: /new (describe your idea to start a book), /draft, /create, /discard, /write, /books, /open, /mode, /rewrite, /focus, /truth, /rename, /replace, /export, /status, /clear, /depth, /quit. Natural language still works.",
+    help: "Commands: /new (describe your idea), /write, /books, /rewrite, /focus, /truth, /rename, /replace, /export, /status, /clear, /depth, /quit. Other writing and project operations go through the agent as natural language.",
     status: (stage, mode) => `Status: ${stage} (${mode}).`,
     config: "Interactive /config is not available inside the Ink dashboard yet. Use inkos config set-global.",
     depthSet: (depthLabel) => `Thinking depth set to ${depthLabel}.`,
-    newBookGuide: "Starting a new book. Describe your idea — genre, world, protagonist, core conflict, anything. The AI will guide you step by step. Use /draft to check progress, /create to finalize.",
+    newBookGuide: "Starting a new book. Describe your idea — genre, world, protagonist, core conflict, anything. The AI will guide you and call the book-creation capability when enough information is available.",
     noLlmConfig: "No LLM configuration found.",
     setupProvider: "Let's set up your API provider first.",
-    toolInitFailed: (message) => `Failed to initialize TUI tools: ${message}`,
-    toolInitHint: "Check your .env or run: inkos config set-global",
   },
   roles: {
     user: "You",
@@ -223,24 +192,6 @@ const EN: TuiCopy = {
     light: "light",
     normal: "normal",
     deep: "deep",
-  },
-  results: {
-    modeSwitched: (mode) => `Mode switched to ${mode}.`,
-    booksListed: "Books listed.",
-    activeBook: (bookId) => `Active book: ${bookId}`,
-    completed: (intent) => `Completed ${intent}`,
-    intentLabels: {
-      write_next: "Chapter written",
-      revise_chapter: "Chapter revised",
-      rewrite_chapter: "Chapter rewritten",
-      update_focus: "Focus updated",
-      explain_status: "Status",
-      explain_failure: "Explanation",
-      pause_book: "Book paused",
-      rename_entity: "Entity renamed",
-      patch_chapter_text: "Text patched",
-      edit_truth: "Truth file updated",
-    },
   },
 };
 

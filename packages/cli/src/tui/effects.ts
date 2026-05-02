@@ -457,15 +457,13 @@ export function buildStyledHelpSections(locale: TuiLocale = resolveTuiLocale()):
       {
         title: "Navigation",
         commands: [
-          ["/books", "List all books"],
-          ["/open <book>", "Select active book"],
+          ["/books", "Ask the agent to list books"],
           ["/status", "Show current status"],
         ],
       },
       {
         title: "Control",
         commands: [
-          ["/mode <auto|semi|manual>", "Switch automation mode"],
           ["/focus <text>", "Update current focus"],
         ],
       },
@@ -491,15 +489,13 @@ export function buildStyledHelpSections(locale: TuiLocale = resolveTuiLocale()):
     {
       title: "导航",
       commands: [
-        ["/books", "列出全部作品"],
-        ["/open <book>", "切换当前作品"],
+        ["/books", "让 agent 列出作品"],
         ["/status", "查看当前状态"],
       ],
     },
     {
       title: "控制",
       commands: [
-        ["/mode <auto|semi|manual>", "切换自动化模式"],
         ["/focus <text>", "更新当前焦点"],
       ],
     },
